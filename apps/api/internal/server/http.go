@@ -65,6 +65,7 @@ func (a *App) routes() http.Handler {
 	r.Get("/problems/{problemID}/attempts", a.listAttemptsForProblem)
 	r.Post("/attempts/{attemptID}/chat", a.chat)
 	r.Get("/attempts/{attemptID}/chat", a.listChat)
+	r.Post("/attempts/{attemptID}/nudge", a.nudge)
 	r.Get("/attempts/{attemptID}/code-file", a.getCodeFile)
 	r.Put("/attempts/{attemptID}/code-file", a.updateCodeFile)
 	r.Post("/attempts/{attemptID}/run", a.runCode)
@@ -102,7 +103,7 @@ func (a *App) createAttempt(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		a.codeFiles.Decorate(attempt)
 		memory, _ := a.store.ProblemMemory(attempt.ProblemID)
-		_, _ = a.store.EnsureInitialMessage(attempt.ID, initialInterviewMessage(memory))
+		_, _ = a.store.EnsureInitialMessage(attempt.ID, initialInterviewMessage(*attempt, memory))
 	}
 	respond(w, attempt, err)
 }
@@ -166,6 +167,23 @@ func (a *App) listChat(w http.ResponseWriter, r *http.Request) {
 	respond(w, messages, err)
 }
 
+func (a *App) nudge(w http.ResponseWriter, r *http.Request) {
+	attemptID := chi.URLParam(r, "attemptID")
+	var req NudgeRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	attempt, err := a.store.GetAttempt(attemptID)
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	message := silenceNudgeMessage(*attempt, req.Reason)
+	created, err := a.store.AddMessage(attemptID, "assistant", message)
+	if err == nil {
+		_ = a.store.RecordFollowUps(attemptID, "silence_nudge", []string{message})
+	}
+	respond(w, created, err)
+}
+
 func (a *App) getCodeFile(w http.ResponseWriter, r *http.Request) {
 	attempt, err := a.store.GetAttempt(chi.URLParam(r, "attemptID"))
 	if err != nil {
@@ -225,6 +243,22 @@ func (a *App) runCode(w http.ResponseWriter, r *http.Request) {
 	}
 	attempt.Code = code
 	_, _ = a.codeFiles.Write(*attempt, code)
+	if attempt.NoRun {
+		updatedAttempt, _ := a.store.UpdateAttemptCode(attemptID, code)
+		if updatedAttempt != nil {
+			attempt = updatedAttempt
+		}
+		result := RunResult{
+			Passed:     false,
+			Status:     "disabled",
+			Results:    []TestCaseResult{},
+			Error:      "Real Interview Modeではローカルテスト実行を禁止しています。dry runで検証してからSubmitしてください。",
+			DurationMS: 0,
+		}
+		a.codeFiles.Decorate(attempt)
+		writeJSON(w, http.StatusOK, map[string]interface{}{"attempt": attempt, "result": result})
+		return
+	}
 	result := a.runner.Run(r.Context(), problem.ID, code, problem.TestCases)
 	status := result.Status
 	if status == "" {
@@ -318,12 +352,32 @@ func (a *App) readSyncedCode(attempt Attempt) (string, error) {
 	return info.Content, nil
 }
 
-func initialInterviewMessage(memory ProblemMemory) string {
+func initialInterviewMessage(attempt Attempt, memory ProblemMemory) string {
 	prefix := ""
 	if len(memory.Attempts) > 1 || len(memory.Mistakes) > 0 || len(memory.FollowUps) > 0 {
 		prefix = "この問題は過去の履歴も見ながら少し厳しめに確認します。前回のミスやフォローアップも踏まえます。\n\n"
 	}
-	return prefix + "まず実装に入る前に、どのように解くつもりかを説明してください。全探索の方針、より良い解法の見込み、使うデータ構造、気になるエッジケースを1つずつ短く述べてください。コードはまだ書かなくて大丈夫です。"
+	mode := "本番モードです。テスト実行や補完に頼らず、声に出して検証する前提で進めます。\n\n"
+	if attempt.InterviewMode == "practice" {
+		mode = "練習モードです。ただし本番同様、実装前の説明は省略しません。\n\n"
+	}
+	return prefix + mode + "まず実装に入る前に、どのように解くつもりかを説明してください。全探索の方針、より良い解法の見込み、使うデータ構造、気になるエッジケースを1つずつ短く述べてください。コードはまだ書かなくて大丈夫です。"
+}
+
+func silenceNudgeMessage(attempt Attempt, reason string) string {
+	if strings.TrimSpace(reason) == "" {
+		reason = "silence"
+	}
+	switch attempt.CompanyPreset {
+	case "meta":
+		return "少し止まっています。Metaの面接ではペースも見ます。今の仮説、次に試す分岐、詰まっている一点を30秒で説明してください。"
+	case "amazon":
+		return "少し止まっています。Amazonの面接では判断過程も評価対象です。今の制約理解と、顧客影響のある失敗ケースを1つ説明してください。"
+	case "google":
+		return "少し止まっています。Googleの面接では曖昧さへの向き合い方も見ます。今の不変条件と、証明できていない点を1つ言語化してください。"
+	default:
+		return "少し止まっています。今何を考えているか、次に検証することを短く説明してください。"
+	}
 }
 
 func extractQuestions(content string) []string {

@@ -30,9 +30,12 @@ func TestStoreSeedsProblemsAndTracksAttemptState(t *testing.T) {
 		t.Fatalf("expected ARAI60 ordering, got %#v", list[0])
 	}
 
-	attempt, err := store.CreateAttempt(CreateAttemptRequest{ProblemID: "two-sum", Language: "python", Code: "code"})
+	attempt, err := store.CreateAttempt(CreateAttemptRequest{ProblemID: "two-sum", Language: "python", Code: "code", CompanyPreset: "meta", InterviewMode: "real"})
 	if err != nil {
 		t.Fatalf("create attempt: %v", err)
+	}
+	if attempt.CompanyPreset != "meta" || attempt.InterviewMode != "real" || !attempt.NoRun || !attempt.NoAutocomplete || !attempt.RequiresPlan {
+		t.Fatalf("unexpected interview defaults: %#v", attempt)
 	}
 
 	updated, err := store.UpdateAttemptRun(attempt.ID, "code", "passed", RunResult{
@@ -103,6 +106,10 @@ func TestStorePersistsChatAndReviewNotes(t *testing.T) {
 		ComplexityQuestions: []string{"なぜO(n)ですか？"},
 		FollowUpQuestions:   []string{"空文字はどう扱いますか？"},
 		MistakesToRemember:  []string{"空文字を有効として扱う。"},
+		HireRecommendation:  "Lean No Hire",
+		DetectedWeaknesses: []WeaknessSignal{
+			{Category: "edge_cases", Signal: "空文字の扱いが曖昧", Severity: 4, Evidence: "説明に空文字がなかった", Drill: "空入力からdry runする"},
+		},
 	})
 	if err != nil {
 		t.Fatalf("update review: %v", err)
@@ -118,13 +125,19 @@ func TestStorePersistsChatAndReviewNotes(t *testing.T) {
 	if len(dashboard.RecentFollowUps) != 4 {
 		t.Fatalf("expected four followups, got %#v", dashboard.RecentFollowUps)
 	}
+	if len(dashboard.WeaknessGraph) != 1 || dashboard.WeaknessGraph[0].Category != "edge_cases" {
+		t.Fatalf("expected edge case weakness graph, got %#v", dashboard.WeaknessGraph)
+	}
 
 	memory, err := store.ProblemMemory("valid-parentheses")
 	if err != nil {
 		t.Fatalf("problem memory: %v", err)
 	}
-	if len(memory.Attempts) != 1 || len(memory.FollowUps) != 4 || len(memory.Mistakes) != 1 {
+	if len(memory.Attempts) != 1 || len(memory.FollowUps) != 4 || len(memory.Mistakes) != 1 || len(memory.Weaknesses) != 1 {
 		t.Fatalf("unexpected memory: %#v", memory)
+	}
+	if memory.Attempts[0].HireRecommendation != "Lean No Hire" {
+		t.Fatalf("expected hire recommendation in memory, got %#v", memory.Attempts[0])
 	}
 }
 

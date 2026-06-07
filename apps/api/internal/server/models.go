@@ -63,6 +63,13 @@ type Attempt struct {
 	CodeFileUpdatedAt      string          `json:"code_file_updated_at,omitempty"`
 	Status                 string          `json:"status"`
 	Outcome                string          `json:"outcome"`
+	CompanyPreset          string          `json:"company_preset"`
+	InterviewMode          string          `json:"interview_mode"`
+	CurrentPhase           string          `json:"current_phase"`
+	TimeLimitSeconds       int             `json:"time_limit_seconds"`
+	NoRun                  bool            `json:"no_run"`
+	NoAutocomplete         bool            `json:"no_autocomplete"`
+	RequiresPlan           bool            `json:"requires_plan"`
 	FollowUpCount          int             `json:"follow_up_count"`
 	SolvedWithoutFollowUps bool            `json:"solved_without_followups"`
 	MistakeSummary         string          `json:"mistake_summary,omitempty"`
@@ -123,6 +130,11 @@ type ReviewResponse struct {
 	InterviewFeedback        []string         `json:"interview_feedback"`
 	MistakesToRemember       []string         `json:"mistakes_to_remember"`
 	GoogleReadiness          string           `json:"google_readiness"`
+	HireRecommendation       string           `json:"hire_recommendation"`
+	Scorecard                []ScorecardItem  `json:"scorecard"`
+	ShadowNotes              []string         `json:"shadow_notes"`
+	MiniRounds               []MiniRound      `json:"mini_rounds"`
+	DetectedWeaknesses       []WeaknessSignal `json:"detected_weaknesses"`
 	DiscussionPlan           []string         `json:"discussion_plan"`
 	NextReviewRecommendation string           `json:"next_review_recommendation"`
 }
@@ -130,6 +142,20 @@ type ReviewResponse struct {
 type ReviewComplexity struct {
 	Time  string `json:"time"`
 	Space string `json:"space"`
+}
+
+type ScorecardItem struct {
+	Area     string `json:"area"`
+	Score    int    `json:"score"`
+	Signal   string `json:"signal"`
+	Evidence string `json:"evidence"`
+	Action   string `json:"action"`
+}
+
+type MiniRound struct {
+	Kind     string `json:"kind"`
+	Question string `json:"question"`
+	Bar      string `json:"bar"`
 }
 
 type DailyResponse struct {
@@ -144,6 +170,7 @@ type ReviewDashboard struct {
 	RecentFollowUps    []FollowUpQuestion `json:"recent_follow_ups"`
 	MistakesToRemember []LearningNote     `json:"mistakes_to_remember"`
 	WeakPatterns       []WeakPattern      `json:"weak_patterns"`
+	WeaknessGraph      []WeaknessTrend    `json:"weakness_graph"`
 	ProblemsForToday   []ProblemListItem  `json:"problems_for_today"`
 }
 
@@ -153,9 +180,11 @@ type WeakPattern struct {
 }
 
 type CreateAttemptRequest struct {
-	ProblemID string `json:"problem_id"`
-	Language  string `json:"language"`
-	Code      string `json:"code"`
+	ProblemID     string `json:"problem_id"`
+	Language      string `json:"language"`
+	Code          string `json:"code"`
+	CompanyPreset string `json:"company_preset"`
+	InterviewMode string `json:"interview_mode"`
 }
 
 type ChatRequest struct {
@@ -171,6 +200,10 @@ type RunRequest struct {
 type ReviewRequest struct {
 	Code     string `json:"code"`
 	Language string `json:"language"`
+}
+
+type NudgeRequest struct {
+	Reason string `json:"reason"`
 }
 
 type CodeFileResponse struct {
@@ -194,20 +227,44 @@ type FollowUpQuestion struct {
 	CreatedAt string `json:"created_at"`
 }
 
+type WeaknessSignal struct {
+	ID        string `json:"id,omitempty"`
+	AttemptID string `json:"attempt_id,omitempty"`
+	ProblemID string `json:"problem_id,omitempty"`
+	Category  string `json:"category"`
+	Signal    string `json:"signal"`
+	Severity  int    `json:"severity"`
+	Evidence  string `json:"evidence"`
+	Drill     string `json:"drill"`
+	CreatedAt string `json:"created_at,omitempty"`
+}
+
+type WeaknessTrend struct {
+	Category        string `json:"category"`
+	Count           int    `json:"count"`
+	AverageSeverity int    `json:"average_severity"`
+	LastSeenAt      string `json:"last_seen_at"`
+	SuggestedDrill  string `json:"suggested_drill"`
+}
+
 type AttemptMemory struct {
 	ID                     string `json:"id"`
 	Status                 string `json:"status"`
 	Outcome                string `json:"outcome"`
+	CompanyPreset          string `json:"company_preset"`
+	InterviewMode          string `json:"interview_mode"`
 	FollowUpCount          int    `json:"follow_up_count"`
 	SolvedWithoutFollowUps bool   `json:"solved_without_followups"`
 	MistakeSummary         string `json:"mistake_summary,omitempty"`
 	GoogleReadiness        string `json:"google_readiness,omitempty"`
+	HireRecommendation     string `json:"hire_recommendation,omitempty"`
 	Summary                string `json:"summary,omitempty"`
 	CreatedAt              string `json:"created_at"`
 }
 
 type ProblemMemory struct {
-	Attempts  []AttemptMemory    `json:"attempts"`
-	FollowUps []FollowUpQuestion `json:"follow_ups"`
-	Mistakes  []LearningNote     `json:"mistakes"`
+	Attempts   []AttemptMemory    `json:"attempts"`
+	FollowUps  []FollowUpQuestion `json:"follow_ups"`
+	Mistakes   []LearningNote     `json:"mistakes"`
+	Weaknesses []WeaknessSignal   `json:"weaknesses"`
 }

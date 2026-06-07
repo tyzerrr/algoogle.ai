@@ -74,6 +74,13 @@ func (s *Store) migrate() error {
 			code TEXT NOT NULL,
 			status TEXT NOT NULL,
 			outcome TEXT NOT NULL DEFAULT 'in_progress',
+			company_preset TEXT NOT NULL DEFAULT 'google',
+			interview_mode TEXT NOT NULL DEFAULT 'real',
+			current_phase TEXT NOT NULL DEFAULT 'planning',
+			time_limit_seconds INTEGER NOT NULL DEFAULT 2700,
+			no_run INTEGER NOT NULL DEFAULT 1,
+			no_autocomplete INTEGER NOT NULL DEFAULT 1,
+			requires_plan INTEGER NOT NULL DEFAULT 1,
 			follow_up_count INTEGER NOT NULL DEFAULT 0,
 			solved_without_followups INTEGER NOT NULL DEFAULT 0,
 			mistake_summary TEXT,
@@ -113,9 +120,24 @@ func (s *Store) migrate() error {
 			FOREIGN KEY (attempt_id) REFERENCES attempts(id),
 			FOREIGN KEY (problem_id) REFERENCES problems(id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS weakness_signals (
+			id TEXT PRIMARY KEY,
+			attempt_id TEXT NOT NULL,
+			problem_id TEXT NOT NULL,
+			category TEXT NOT NULL,
+			signal TEXT NOT NULL,
+			severity INTEGER NOT NULL DEFAULT 1,
+			evidence TEXT NOT NULL,
+			drill TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY (attempt_id) REFERENCES attempts(id),
+			FOREIGN KEY (problem_id) REFERENCES problems(id)
+		)`,
 		`CREATE INDEX IF NOT EXISTS idx_attempts_problem_created ON attempts(problem_id, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_attempt_created ON chat_messages(attempt_id, created_at ASC)`,
 		`CREATE INDEX IF NOT EXISTS idx_followups_problem_created ON follow_up_questions(problem_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_weakness_problem_created ON weakness_signals(problem_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_weakness_category_created ON weakness_signals(category, created_at DESC)`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.Exec(statement); err != nil {
@@ -127,6 +149,13 @@ func (s *Store) migrate() error {
 		`ALTER TABLE problems ADD COLUMN list_name TEXT NOT NULL DEFAULT 'Arai60'`,
 		`ALTER TABLE problems ADD COLUMN order_index INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE attempts ADD COLUMN outcome TEXT NOT NULL DEFAULT 'in_progress'`,
+		`ALTER TABLE attempts ADD COLUMN company_preset TEXT NOT NULL DEFAULT 'google'`,
+		`ALTER TABLE attempts ADD COLUMN interview_mode TEXT NOT NULL DEFAULT 'real'`,
+		`ALTER TABLE attempts ADD COLUMN current_phase TEXT NOT NULL DEFAULT 'planning'`,
+		`ALTER TABLE attempts ADD COLUMN time_limit_seconds INTEGER NOT NULL DEFAULT 2700`,
+		`ALTER TABLE attempts ADD COLUMN no_run INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE attempts ADD COLUMN no_autocomplete INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE attempts ADD COLUMN requires_plan INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE attempts ADD COLUMN follow_up_count INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE attempts ADD COLUMN solved_without_followups INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE attempts ADD COLUMN mistake_summary TEXT`,
@@ -279,19 +308,42 @@ func (s *Store) CreateAttempt(req CreateAttemptRequest) (*Attempt, error) {
 	if code == "" {
 		code = problem.StarterCode
 	}
+	settings := defaultsForInterview(req.CompanyPreset, req.InterviewMode)
 	attempt := Attempt{
-		ID:        newID(),
-		ProblemID: req.ProblemID,
-		Language:  language,
-		Code:      code,
-		Status:    "in_progress",
-		Outcome:   "in_progress",
-		CreatedAt: now(),
+		ID:               newID(),
+		ProblemID:        req.ProblemID,
+		Language:         language,
+		Code:             code,
+		Status:           "in_progress",
+		Outcome:          "in_progress",
+		CompanyPreset:    settings.CompanyPreset,
+		InterviewMode:    settings.InterviewMode,
+		CurrentPhase:     settings.CurrentPhase,
+		TimeLimitSeconds: settings.TimeLimitSeconds,
+		NoRun:            settings.NoRun,
+		NoAutocomplete:   settings.NoAutocomplete,
+		RequiresPlan:     settings.RequiresPlan,
+		CreatedAt:        now(),
 	}
 	_, err = s.db.Exec(
-		`INSERT INTO attempts (id, problem_id, language, code, status, outcome, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		attempt.ID, attempt.ProblemID, attempt.Language, attempt.Code, attempt.Status, attempt.Outcome, attempt.CreatedAt,
+		`INSERT INTO attempts
+		(id, problem_id, language, code, status, outcome, company_preset, interview_mode, current_phase,
+			time_limit_seconds, no_run, no_autocomplete, requires_plan, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		attempt.ID,
+		attempt.ProblemID,
+		attempt.Language,
+		attempt.Code,
+		attempt.Status,
+		attempt.Outcome,
+		attempt.CompanyPreset,
+		attempt.InterviewMode,
+		attempt.CurrentPhase,
+		attempt.TimeLimitSeconds,
+		boolInt(attempt.NoRun),
+		boolInt(attempt.NoAutocomplete),
+		boolInt(attempt.RequiresPlan),
+		attempt.CreatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -301,7 +353,9 @@ func (s *Store) CreateAttempt(req CreateAttemptRequest) (*Attempt, error) {
 
 func (s *Store) GetAttempt(attemptID string) (*Attempt, error) {
 	row := s.db.QueryRow(
-		`SELECT a.id, a.problem_id, p.title, a.language, a.code, a.status, a.outcome, a.follow_up_count,
+		`SELECT a.id, a.problem_id, p.title, a.language, a.code, a.status, a.outcome,
+			a.company_preset, a.interview_mode, a.current_phase, a.time_limit_seconds,
+			a.no_run, a.no_autocomplete, a.requires_plan, a.follow_up_count,
 			a.solved_without_followups, COALESCE(a.mistake_summary, ''), a.test_result, a.ai_review,
 			a.hints_used, a.time_spent_seconds, a.completed_at, a.created_at
 		FROM attempts a
@@ -321,7 +375,9 @@ func (s *Store) GetAttempt(attemptID string) (*Attempt, error) {
 
 func (s *Store) ListAttemptsForProblem(problemID string) ([]Attempt, error) {
 	rows, err := s.db.Query(
-		`SELECT a.id, a.problem_id, p.title, a.language, a.code, a.status, a.outcome, a.follow_up_count,
+		`SELECT a.id, a.problem_id, p.title, a.language, a.code, a.status, a.outcome,
+			a.company_preset, a.interview_mode, a.current_phase, a.time_limit_seconds,
+			a.no_run, a.no_autocomplete, a.requires_plan, a.follow_up_count,
 			a.solved_without_followups, COALESCE(a.mistake_summary, ''), a.test_result, a.ai_review,
 			a.hints_used, a.time_spent_seconds, a.completed_at, a.created_at
 		FROM attempts a
@@ -339,7 +395,9 @@ func (s *Store) ListAttemptsForProblem(problemID string) ([]Attempt, error) {
 
 func (s *Store) RecentAttempts(limit int) ([]Attempt, error) {
 	rows, err := s.db.Query(
-		`SELECT a.id, a.problem_id, p.title, a.language, a.code, a.status, a.outcome, a.follow_up_count,
+		`SELECT a.id, a.problem_id, p.title, a.language, a.code, a.status, a.outcome,
+			a.company_preset, a.interview_mode, a.current_phase, a.time_limit_seconds,
+			a.no_run, a.no_autocomplete, a.requires_plan, a.follow_up_count,
 			a.solved_without_followups, COALESCE(a.mistake_summary, ''), a.test_result, a.ai_review,
 			a.hints_used, a.time_spent_seconds, a.completed_at, a.created_at
 		FROM attempts a
@@ -482,6 +540,105 @@ func scanFollowUps(rows *sql.Rows) ([]FollowUpQuestion, error) {
 	return items, rows.Err()
 }
 
+func (s *Store) RecordWeaknesses(attemptID string, weaknesses []WeaknessSignal) error {
+	attempt, err := s.GetAttempt(attemptID)
+	if err != nil {
+		return err
+	}
+	for _, weakness := range weaknesses {
+		if strings.TrimSpace(weakness.Category) == "" || strings.TrimSpace(weakness.Signal) == "" {
+			continue
+		}
+		severity := weakness.Severity
+		if severity < 1 {
+			severity = 1
+		}
+		if severity > 5 {
+			severity = 5
+		}
+		_, err := s.db.Exec(
+			`INSERT INTO weakness_signals
+			(id, attempt_id, problem_id, category, signal, severity, evidence, drill, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			newID(),
+			attempt.ID,
+			attempt.ProblemID,
+			strings.TrimSpace(weakness.Category),
+			strings.TrimSpace(weakness.Signal),
+			severity,
+			strings.TrimSpace(weakness.Evidence),
+			strings.TrimSpace(weakness.Drill),
+			now(),
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) weaknessGraph(limit int) ([]WeaknessTrend, error) {
+	rows, err := s.db.Query(
+		`SELECT category, COUNT(*) as count, CAST(ROUND(AVG(severity)) AS INTEGER) as average_severity,
+			MAX(created_at) as last_seen_at,
+			COALESCE((SELECT drill FROM weakness_signals w2 WHERE w2.category = weakness_signals.category ORDER BY created_at DESC LIMIT 1), '')
+		FROM weakness_signals
+		GROUP BY category
+		ORDER BY average_severity DESC, count DESC, last_seen_at DESC
+		LIMIT ?`,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	trends := []WeaknessTrend{}
+	for rows.Next() {
+		var trend WeaknessTrend
+		if err := rows.Scan(&trend.Category, &trend.Count, &trend.AverageSeverity, &trend.LastSeenAt, &trend.SuggestedDrill); err != nil {
+			return nil, err
+		}
+		trends = append(trends, trend)
+	}
+	return trends, rows.Err()
+}
+
+func (s *Store) weaknessesForProblem(problemID string, limit int) ([]WeaknessSignal, error) {
+	rows, err := s.db.Query(
+		`SELECT id, attempt_id, problem_id, category, signal, severity, evidence, drill, created_at
+		FROM weakness_signals WHERE problem_id = ? ORDER BY created_at DESC LIMIT ?`,
+		problemID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanWeaknesses(rows)
+}
+
+func scanWeaknesses(rows *sql.Rows) ([]WeaknessSignal, error) {
+	items := []WeaknessSignal{}
+	for rows.Next() {
+		var item WeaknessSignal
+		if err := rows.Scan(
+			&item.ID,
+			&item.AttemptID,
+			&item.ProblemID,
+			&item.Category,
+			&item.Signal,
+			&item.Severity,
+			&item.Evidence,
+			&item.Drill,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (s *Store) UpdateAttemptCode(attemptID, code string) (*Attempt, error) {
 	_, err := s.db.Exec(`UPDATE attempts SET code = ? WHERE id = ?`, code, attemptID)
 	if err != nil {
@@ -550,6 +707,9 @@ func (s *Store) UpdateAttemptReview(attemptID, code string, review ReviewRespons
 	if err := s.RecordFollowUps(attemptID, "review_followup", review.FollowUpQuestions); err != nil {
 		return nil, err
 	}
+	if err := s.RecordWeaknesses(attemptID, review.DetectedWeaknesses); err != nil {
+		return nil, err
+	}
 	for _, note := range review.MistakesToRemember {
 		if strings.TrimSpace(note) == "" {
 			continue
@@ -587,6 +747,10 @@ func (s *Store) ReviewDashboard() (*ReviewDashboard, error) {
 	if err != nil {
 		return nil, err
 	}
+	weaknessGraph, err := s.weaknessGraph(8)
+	if err != nil {
+		return nil, err
+	}
 	problems, err := s.ListProblems()
 	if err != nil {
 		return nil, err
@@ -605,13 +769,14 @@ func (s *Store) ReviewDashboard() (*ReviewDashboard, error) {
 		RecentFollowUps:    followUps,
 		MistakesToRemember: notes,
 		WeakPatterns:       weakPatterns,
+		WeaknessGraph:      weaknessGraph,
 		ProblemsForToday:   today,
 	}, nil
 }
 
 func (s *Store) ProblemMemory(problemID string) (ProblemMemory, error) {
 	attemptRows, err := s.db.Query(
-		`SELECT id, status, outcome, follow_up_count, solved_without_followups,
+		`SELECT id, status, outcome, company_preset, interview_mode, follow_up_count, solved_without_followups,
 			COALESCE(mistake_summary, ''), COALESCE(ai_review, ''), created_at
 		FROM attempts WHERE problem_id = ? ORDER BY created_at DESC LIMIT 6`,
 		problemID,
@@ -621,7 +786,7 @@ func (s *Store) ProblemMemory(problemID string) (ProblemMemory, error) {
 	}
 	defer attemptRows.Close()
 
-	memory := ProblemMemory{Attempts: []AttemptMemory{}, FollowUps: []FollowUpQuestion{}, Mistakes: []LearningNote{}}
+	memory := ProblemMemory{Attempts: []AttemptMemory{}, FollowUps: []FollowUpQuestion{}, Mistakes: []LearningNote{}, Weaknesses: []WeaknessSignal{}}
 	for attemptRows.Next() {
 		var item AttemptMemory
 		var solvedWithout int
@@ -630,6 +795,8 @@ func (s *Store) ProblemMemory(problemID string) (ProblemMemory, error) {
 			&item.ID,
 			&item.Status,
 			&item.Outcome,
+			&item.CompanyPreset,
+			&item.InterviewMode,
 			&item.FollowUpCount,
 			&solvedWithout,
 			&item.MistakeSummary,
@@ -643,6 +810,7 @@ func (s *Store) ProblemMemory(problemID string) (ProblemMemory, error) {
 			var review ReviewResponse
 			if err := json.Unmarshal([]byte(reviewText), &review); err == nil {
 				item.GoogleReadiness = review.GoogleReadiness
+				item.HireRecommendation = review.HireRecommendation
 				item.Summary = review.Summary
 			}
 		}
@@ -657,6 +825,12 @@ func (s *Store) ProblemMemory(problemID string) (ProblemMemory, error) {
 		return ProblemMemory{}, err
 	}
 	memory.FollowUps = followUps
+
+	weaknesses, err := s.weaknessesForProblem(problemID, 10)
+	if err != nil {
+		return ProblemMemory{}, err
+	}
+	memory.Weaknesses = weaknesses
 
 	noteRows, err := s.db.Query(
 		`SELECT n.id, n.problem_id, p.title, n.mistake_type, n.note, n.next_review_date, n.created_at
@@ -834,7 +1008,7 @@ func scanAttempt(row attemptScanner) (*Attempt, error) {
 	var attempt Attempt
 	var testResultText, reviewText, completedAt sql.NullString
 	var timeSpent sql.NullInt64
-	var solvedWithout int
+	var noRun, noAutocomplete, requiresPlan, solvedWithout int
 	if err := row.Scan(
 		&attempt.ID,
 		&attempt.ProblemID,
@@ -843,6 +1017,13 @@ func scanAttempt(row attemptScanner) (*Attempt, error) {
 		&attempt.Code,
 		&attempt.Status,
 		&attempt.Outcome,
+		&attempt.CompanyPreset,
+		&attempt.InterviewMode,
+		&attempt.CurrentPhase,
+		&attempt.TimeLimitSeconds,
+		&noRun,
+		&noAutocomplete,
+		&requiresPlan,
 		&attempt.FollowUpCount,
 		&solvedWithout,
 		&attempt.MistakeSummary,
@@ -855,6 +1036,9 @@ func scanAttempt(row attemptScanner) (*Attempt, error) {
 	); err != nil {
 		return nil, err
 	}
+	attempt.NoRun = noRun == 1
+	attempt.NoAutocomplete = noAutocomplete == 1
+	attempt.RequiresPlan = requiresPlan == 1
 	attempt.SolvedWithoutFollowUps = solvedWithout == 1
 	if testResultText.Valid {
 		var result RunResult
