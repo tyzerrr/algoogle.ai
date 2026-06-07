@@ -189,7 +189,9 @@ func (s *Store) Seed(problems []Problem) error {
 func (s *Store) ListProblems() ([]ProblemListItem, error) {
 	rows, err := s.db.Query(
 		`SELECT id, title, difficulty, pattern, tags, COALESCE(source_url, ''), COALESCE(list_name, ''), order_index
-		FROM problems ORDER BY order_index ASC, created_at ASC`,
+		FROM problems
+		WHERE list_name = 'Arai60' AND order_index > 0
+		ORDER BY order_index ASC, created_at ASC`,
 	)
 	if err != nil {
 		return nil, err
