@@ -14,7 +14,7 @@ func main() {
 		log.Fatalf("failed to start app: %v", err)
 	}
 
-	log.Printf("AlgoSensei API listening on :%s", cfg.Port)
+	log.Printf("algoogle API listening on :%s", cfg.Port)
 	if err := app.Listen(); err != nil {
 		log.Fatal(err)
 	}

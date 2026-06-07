@@ -5,7 +5,7 @@ import ThemeSwitcher from "@/components/ThemeSwitcher";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AlgoSensei",
+  title: "algoogle",
   description: "AI coding interview practice for Google-style SWE interviews",
 };
 
@@ -14,9 +14,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="ja" suppressHydrationWarning>
       <body>
         <header className="topbar">
-          <Link href="/" className="brand" aria-label="AlgoSensei home">
+          <Link href="/" className="brand" aria-label="algoogle home">
             <BrainCircuit size={22} />
-            <span>AlgoSensei</span>
+            <span>algoogle</span>
           </Link>
           <nav className="nav">
             <Link href="/problems">

@@ -9,7 +9,7 @@ LeetCodeの解答暗記ではなく、AI面接官との会話を通じて、問�
 ## 特徴
 
 - 毎日のおすすめ問題を表示
-- ARAI60の60問をカード形式で表示
+- Arai60の60問をカード形式で表示
 - 問題ごとに一発OK、フォローアップ込みOK、再挑戦OK、要復習を管理
 - 問題詳細画面で、実装前からAI面接官と方針を会話
 - AI providerをCodex CLI / Claude Code CLIからattemptごとに選択
@@ -201,7 +201,7 @@ GitHub Actionsでは、Go APIのテスト、Next.jsの型チェック/ビルド�
 
 - 今日のおすすめ問題を見る
 - 問題一覧を見る
-- ARAI60を10問ずつページングして見る
+- Arai60を10問ずつページングして見る
 - 問題詳細でPythonコードを書く
 - Monaco EditorまたはNeoVimで編集する
 - Google / Meta / Amazon風のReal Interview Modeで練習する

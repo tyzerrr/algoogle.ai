@@ -50,7 +50,7 @@ export default function ProblemList({ problems }: { problems: ProblemListItem[] 
     <>
       <div className="listToolbar">
         <p className="muted">
-          ARAI60 {problems.length}問中 {(safePage - 1) * pageSize + 1}-
+          Arai60 {problems.length}問中 {(safePage - 1) * pageSize + 1}-
           {Math.min(safePage * pageSize, problems.length)}問目
         </p>
         <div className="pager">

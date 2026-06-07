@@ -23,9 +23,9 @@ export default function ProblemsPage() {
       <div className="pageHeader">
         <div>
           <p className="eyebrow">Problem set</p>
-          <h1>ARAI60</h1>
+          <h1>Arai60</h1>
           <p className="muted">
-            新井康平氏のARAI60を、解け方とフォローアップ履歴まで含めて管理します。
+            新井康平氏のArai60を、解け方とフォローアップ履歴まで含めて管理します。
           </p>
         </div>
       </div>

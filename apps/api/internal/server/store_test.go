@@ -21,13 +21,13 @@ func TestStoreSeedsProblemsAndTracksAttemptState(t *testing.T) {
 		t.Fatalf("list problems: %v", err)
 	}
 	if len(list) != 60 {
-		t.Fatalf("expected 60 ARAI60 seed problems, got %d", len(list))
+		t.Fatalf("expected 60 Arai60 seed problems, got %d", len(list))
 	}
 	if list[0].Status != "not_started" {
 		t.Fatalf("expected first problem to be not_started, got %s", list[0].Status)
 	}
 	if list[0].Title != "Linked List Cycle" || list[0].OrderIndex != 1 {
-		t.Fatalf("expected ARAI60 ordering, got %#v", list[0])
+		t.Fatalf("expected Arai60 ordering, got %#v", list[0])
 	}
 
 	attempt, err := store.CreateAttempt(CreateAttemptRequest{ProblemID: "two-sum", Language: "python", Code: "code", AIProvider: "claude-code", CompanyPreset: "meta", InterviewMode: "real"})
