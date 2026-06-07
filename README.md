@@ -12,12 +12,14 @@ LeetCodeの解答暗記ではなく、AI面接官との会話を通じて、問�
 - ARAI60の60問をカード形式で表示
 - 問題ごとに一発OK、フォローアップ込みOK、再挑戦OK、要復習を管理
 - 問題詳細画面で、実装前からAI面接官と方針を会話
+- AI providerをCodex CLI / Claude Code CLIからattemptごとに選択
 - Google / Meta / Amazon / Generic の面接プリセットを切り替え
 - Real Interview Modeで、ローカル実行なし・補完なし・方針説明必須の練習
+- Light / Dark / Netflix の3テーマを切り替え
 - 30秒以上沈黙した場合、AI面接官が発話や不変条件の説明を促す
 - Monaco Editorとローカル `workspace/` のPythonファイルを双方向同期
 - ローカルのテストケースをsubprocessで実行
-- Codex CLIをサブプロセスとして起動し、AIチャットとAIレビューを実行
+- Codex CLIまたはClaude Code CLIをサブプロセスとして起動し、AIチャットとAIレビューを実行
 - Submit後に採用判定、scorecard、shadow evaluator notes、mini roundsを表示
 - attempts、chat history、follow-up questions、learning notes、weakness signalsをSQLiteに保存
 
@@ -32,30 +34,32 @@ LeetCode本文の丸写しではなく、アプリ内では面接練習用カー
 - Frontend: Next.js, TypeScript, Monaco Editor, pnpm
 - Backend: Go, chi, SQLite
 - Code runner: Python subprocess
-- AI interviewer / reviewer: Codex CLI subprocess
+- AI interviewer / reviewer: Codex CLI or Claude Code CLI subprocess
 - Local runtime: Docker Compose
 
-## Codex CLIについて
+## AI CLI providerについて
 
-AIチャットとAIレビューは、OpenAI APIキーではなく `codex exec` をサブプロセスとして起動します。
+AIチャットとAIレビューは、APIキーをアプリに保存せず、ログイン済みのCLIをサブプロセスとして起動します。
 
-ローカル実行では、すでにログイン済みのCodex CLIを使います。
+問題詳細画面の `AI provider` からattemptごとに選択できます。
 
 ```bash
 codex login
 codex exec --help
+claude auth
+claude -p --help
 ```
 
-Docker ComposeではLinux版の `@openai/codex` をAPIコンテナに入れ、ホストの `${HOME}/.codex` を読み取り専用でマウントします。APIキーは発行しません。
+Docker ComposeではLinux版の `@openai/codex` と `@anthropic-ai/claude-code` をAPIコンテナに入れ、ホストの `${HOME}/.codex` と `${HOME}/.claude` を読み取り専用でマウントします。
 
 ## Credential管理
 
 このリポジトリはcredentialを含めない前提です。
 
-- OpenAI API keyは使わず、Codex CLIのログイン済みセッションを利用します
+- OpenAI API keyやAnthropic API keyはアプリ設定として使わず、ログイン済みCLIセッションを利用します
 - `.env` と `.env.*` は `.gitignore` で除外しています
-- Docker Composeでは `${HOME}/.codex` を読み取り専用でマウントします
-- `~/.codex`、API key、token、private keyはcommitしないでください
+- Docker Composeでは `${HOME}/.codex` と `${HOME}/.claude` を読み取り専用でマウントします
+- `~/.codex`、`~/.claude`、API key、token、private keyはcommitしないでください
 
 ## ローカル起動
 
@@ -89,7 +93,10 @@ NeoVimで保存すると、アプリ上のMonaco Editorへ自動反映されま�
 
 ## Real Interview Mode
 
-問題詳細画面では、上部のInterview Controlから会社プリセットと練習モードを選べます。
+問題詳細画面では、上部のInterview ControlからAI provider、会社プリセット、練習モードを選べます。
+
+- `Codex`: Codex CLI subprocessで面接官/レビュワーを起動
+- `Claude Code`: Claude Code CLI subprocessで面接官/レビュワーを起動
 
 - `Google`: 曖昧さ、制約、証明、不変条件、深いフォローアップを重視
 - `Meta`: 実装速度、簡潔な説明、dry run、追加問題への対応を重視
@@ -99,6 +106,14 @@ NeoVimで保存すると、アプリ上のMonaco Editorへ自動反映されま�
 `Real` ではローカル実行ボタンを無効化し、Monaco Editorの補完も抑制します。面接官は、実装前にbrute force、最適化方針、データ構造、不変条件、edge caseを確認します。
 
 `Practice` ではローカル実行と補完を使えるので、学習初期や復習に向いています。
+
+## Theme Modes
+
+画面右上からテーマを切り替えられます。
+
+- `Light`: 明るい通常テーマ
+- `Dark`: 長時間練習向けの暗色テーマ
+- `Netflix`: 黒と赤を基調にした集中モード
 
 ## Review Loop
 
@@ -138,6 +153,11 @@ corepack pnpm dev
 - `CODEX_CLI_PATH`: Codex CLI実行ファイル
 - `CODEX_MODEL`: 必要な場合だけCodex CLIに渡すモデル名
 - `CODEX_WORKDIR`: Codex CLIの作業ディレクトリ
+- `CODEX_CLI_TIMEOUT_SECONDS`: Codex CLIのタイムアウト秒数
+- `CLAUDE_CLI_PATH`: Claude Code CLI実行ファイル
+- `CLAUDE_MODEL`: 必要な場合だけClaude Code CLIに渡すモデル名
+- `CLAUDE_WORKDIR`: Claude Code CLIの作業ディレクトリ
+- `CLAUDE_CLI_TIMEOUT_SECONDS`: Claude Code CLIのタイムアウト秒数
 - `CODE_WORKSPACE_DIR`: APIが同期ファイルを読み書きするディレクトリ
 - `CODE_WORKSPACE_PUBLIC_DIR`: Webに表示する同期ファイルのパス
 - `NEXT_PUBLIC_API_BASE_URL`: Webから参照するAPI URL
@@ -170,6 +190,7 @@ GitHub Actionsでは、Go APIのテスト、Next.jsの型チェック/ビルド�
 - Monaco EditorまたはNeoVimで編集する
 - Google / Meta / Amazon風のReal Interview Modeで練習する
 - ローカルテストケースを実行する
-- Codex CLI経由のAI面接官と会話する
-- Codex CLI経由のAIレビューをJSON構造で保存する
+- Codex CLIまたはClaude Code CLI経由のAI面接官と会話する
+- Codex CLIまたはClaude Code CLI経由のAIレビューをJSON構造で保存する
+- Light / Dark / Netflix modeを切り替える
 - scorecard、採用判定、フォローアップ質問、過去のミス、弱点signalをSQLiteに保存し、次回の面接官プロンプトへ反映する
