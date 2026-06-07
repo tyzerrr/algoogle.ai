@@ -74,6 +74,7 @@ func (s *Store) migrate() error {
 			code TEXT NOT NULL,
 			status TEXT NOT NULL,
 			outcome TEXT NOT NULL DEFAULT 'in_progress',
+			ai_provider TEXT NOT NULL DEFAULT 'codex',
 			company_preset TEXT NOT NULL DEFAULT 'google',
 			interview_mode TEXT NOT NULL DEFAULT 'real',
 			current_phase TEXT NOT NULL DEFAULT 'planning',
@@ -149,6 +150,7 @@ func (s *Store) migrate() error {
 		`ALTER TABLE problems ADD COLUMN list_name TEXT NOT NULL DEFAULT 'Arai60'`,
 		`ALTER TABLE problems ADD COLUMN order_index INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE attempts ADD COLUMN outcome TEXT NOT NULL DEFAULT 'in_progress'`,
+		`ALTER TABLE attempts ADD COLUMN ai_provider TEXT NOT NULL DEFAULT 'codex'`,
 		`ALTER TABLE attempts ADD COLUMN company_preset TEXT NOT NULL DEFAULT 'google'`,
 		`ALTER TABLE attempts ADD COLUMN interview_mode TEXT NOT NULL DEFAULT 'real'`,
 		`ALTER TABLE attempts ADD COLUMN current_phase TEXT NOT NULL DEFAULT 'planning'`,
@@ -316,6 +318,7 @@ func (s *Store) CreateAttempt(req CreateAttemptRequest) (*Attempt, error) {
 		Code:             code,
 		Status:           "in_progress",
 		Outcome:          "in_progress",
+		AIProvider:       normalizeAIProvider(req.AIProvider),
 		CompanyPreset:    settings.CompanyPreset,
 		InterviewMode:    settings.InterviewMode,
 		CurrentPhase:     settings.CurrentPhase,
@@ -327,15 +330,16 @@ func (s *Store) CreateAttempt(req CreateAttemptRequest) (*Attempt, error) {
 	}
 	_, err = s.db.Exec(
 		`INSERT INTO attempts
-		(id, problem_id, language, code, status, outcome, company_preset, interview_mode, current_phase,
+		(id, problem_id, language, code, status, outcome, ai_provider, company_preset, interview_mode, current_phase,
 			time_limit_seconds, no_run, no_autocomplete, requires_plan, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		attempt.ID,
 		attempt.ProblemID,
 		attempt.Language,
 		attempt.Code,
 		attempt.Status,
 		attempt.Outcome,
+		attempt.AIProvider,
 		attempt.CompanyPreset,
 		attempt.InterviewMode,
 		attempt.CurrentPhase,
@@ -354,7 +358,7 @@ func (s *Store) CreateAttempt(req CreateAttemptRequest) (*Attempt, error) {
 func (s *Store) GetAttempt(attemptID string) (*Attempt, error) {
 	row := s.db.QueryRow(
 		`SELECT a.id, a.problem_id, p.title, a.language, a.code, a.status, a.outcome,
-			a.company_preset, a.interview_mode, a.current_phase, a.time_limit_seconds,
+			a.ai_provider, a.company_preset, a.interview_mode, a.current_phase, a.time_limit_seconds,
 			a.no_run, a.no_autocomplete, a.requires_plan, a.follow_up_count,
 			a.solved_without_followups, COALESCE(a.mistake_summary, ''), a.test_result, a.ai_review,
 			a.hints_used, a.time_spent_seconds, a.completed_at, a.created_at
@@ -376,7 +380,7 @@ func (s *Store) GetAttempt(attemptID string) (*Attempt, error) {
 func (s *Store) ListAttemptsForProblem(problemID string) ([]Attempt, error) {
 	rows, err := s.db.Query(
 		`SELECT a.id, a.problem_id, p.title, a.language, a.code, a.status, a.outcome,
-			a.company_preset, a.interview_mode, a.current_phase, a.time_limit_seconds,
+			a.ai_provider, a.company_preset, a.interview_mode, a.current_phase, a.time_limit_seconds,
 			a.no_run, a.no_autocomplete, a.requires_plan, a.follow_up_count,
 			a.solved_without_followups, COALESCE(a.mistake_summary, ''), a.test_result, a.ai_review,
 			a.hints_used, a.time_spent_seconds, a.completed_at, a.created_at
@@ -396,7 +400,7 @@ func (s *Store) ListAttemptsForProblem(problemID string) ([]Attempt, error) {
 func (s *Store) RecentAttempts(limit int) ([]Attempt, error) {
 	rows, err := s.db.Query(
 		`SELECT a.id, a.problem_id, p.title, a.language, a.code, a.status, a.outcome,
-			a.company_preset, a.interview_mode, a.current_phase, a.time_limit_seconds,
+			a.ai_provider, a.company_preset, a.interview_mode, a.current_phase, a.time_limit_seconds,
 			a.no_run, a.no_autocomplete, a.requires_plan, a.follow_up_count,
 			a.solved_without_followups, COALESCE(a.mistake_summary, ''), a.test_result, a.ai_review,
 			a.hints_used, a.time_spent_seconds, a.completed_at, a.created_at
@@ -776,7 +780,7 @@ func (s *Store) ReviewDashboard() (*ReviewDashboard, error) {
 
 func (s *Store) ProblemMemory(problemID string) (ProblemMemory, error) {
 	attemptRows, err := s.db.Query(
-		`SELECT id, status, outcome, company_preset, interview_mode, follow_up_count, solved_without_followups,
+		`SELECT id, status, outcome, ai_provider, company_preset, interview_mode, follow_up_count, solved_without_followups,
 			COALESCE(mistake_summary, ''), COALESCE(ai_review, ''), created_at
 		FROM attempts WHERE problem_id = ? ORDER BY created_at DESC LIMIT 6`,
 		problemID,
@@ -795,6 +799,7 @@ func (s *Store) ProblemMemory(problemID string) (ProblemMemory, error) {
 			&item.ID,
 			&item.Status,
 			&item.Outcome,
+			&item.AIProvider,
 			&item.CompanyPreset,
 			&item.InterviewMode,
 			&item.FollowUpCount,
@@ -805,6 +810,7 @@ func (s *Store) ProblemMemory(problemID string) (ProblemMemory, error) {
 		); err != nil {
 			return ProblemMemory{}, err
 		}
+		item.AIProvider = normalizeAIProvider(item.AIProvider)
 		item.SolvedWithoutFollowUps = solvedWithout == 1
 		if reviewText != "" {
 			var review ReviewResponse
@@ -1017,6 +1023,7 @@ func scanAttempt(row attemptScanner) (*Attempt, error) {
 		&attempt.Code,
 		&attempt.Status,
 		&attempt.Outcome,
+		&attempt.AIProvider,
 		&attempt.CompanyPreset,
 		&attempt.InterviewMode,
 		&attempt.CurrentPhase,
@@ -1039,6 +1046,7 @@ func scanAttempt(row attemptScanner) (*Attempt, error) {
 	attempt.NoRun = noRun == 1
 	attempt.NoAutocomplete = noAutocomplete == 1
 	attempt.RequiresPlan = requiresPlan == 1
+	attempt.AIProvider = normalizeAIProvider(attempt.AIProvider)
 	attempt.SolvedWithoutFollowUps = solvedWithout == 1
 	if testResultText.Valid {
 		var result RunResult

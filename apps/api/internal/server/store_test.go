@@ -30,11 +30,11 @@ func TestStoreSeedsProblemsAndTracksAttemptState(t *testing.T) {
 		t.Fatalf("expected ARAI60 ordering, got %#v", list[0])
 	}
 
-	attempt, err := store.CreateAttempt(CreateAttemptRequest{ProblemID: "two-sum", Language: "python", Code: "code", CompanyPreset: "meta", InterviewMode: "real"})
+	attempt, err := store.CreateAttempt(CreateAttemptRequest{ProblemID: "two-sum", Language: "python", Code: "code", AIProvider: "claude-code", CompanyPreset: "meta", InterviewMode: "real"})
 	if err != nil {
 		t.Fatalf("create attempt: %v", err)
 	}
-	if attempt.CompanyPreset != "meta" || attempt.InterviewMode != "real" || !attempt.NoRun || !attempt.NoAutocomplete || !attempt.RequiresPlan {
+	if attempt.AIProvider != "claude" || attempt.CompanyPreset != "meta" || attempt.InterviewMode != "real" || !attempt.NoRun || !attempt.NoAutocomplete || !attempt.RequiresPlan {
 		t.Fatalf("unexpected interview defaults: %#v", attempt)
 	}
 
@@ -138,6 +138,9 @@ func TestStorePersistsChatAndReviewNotes(t *testing.T) {
 	}
 	if memory.Attempts[0].HireRecommendation != "Lean No Hire" {
 		t.Fatalf("expected hire recommendation in memory, got %#v", memory.Attempts[0])
+	}
+	if memory.Attempts[0].AIProvider != "codex" {
+		t.Fatalf("expected default AI provider in memory, got %#v", memory.Attempts[0])
 	}
 }
 

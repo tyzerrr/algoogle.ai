@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -14,7 +15,7 @@ type App struct {
 	cfg       Config
 	store     *Store
 	runner    *CodeRunner
-	codex     *CodexClient
+	ai        *AIService
 	codeFiles *CodeFileManager
 	router    http.Handler
 }
@@ -36,7 +37,7 @@ func New(cfg Config) (*App, error) {
 		cfg:       cfg,
 		store:     store,
 		runner:    NewCodeRunner(cfg.PythonBin),
-		codex:     NewCodexClient(cfg),
+		ai:        NewAIService(cfg),
 		codeFiles: NewCodeFileManager(cfg.CodeWorkspaceDir, cfg.CodeWorkspacePublic),
 	}
 	app.router = app.routes()
@@ -151,9 +152,9 @@ func (a *App) chat(w http.ResponseWriter, r *http.Request) {
 	}
 	messages, _ := a.store.ListMessages(attemptID)
 	memory, _ := a.store.ProblemMemory(attempt.ProblemID)
-	reply, err := a.codex.Chat(r.Context(), *problem, *attempt, messages, req.Message, req.EnglishMode, memory)
+	reply, err := a.ai.Chat(r.Context(), *problem, *attempt, messages, req.Message, req.EnglishMode, memory)
 	if err != nil {
-		reply = "Codex CLIを使ったAI面接官を起動できませんでした。CODEX_CLI_PATH、ログイン状態、Docker利用時の ~/.codex マウントを確認してください。\n\n詳細: " + err.Error()
+		reply = fmt.Sprintf("%s CLIを使ったAI面接官を起動できませんでした。CLI path、ログイン状態、Docker利用時のcredentialマウントを確認してください。\n\n詳細: %s", aiProviderLabel(attempt.AIProvider), err.Error())
 	}
 	message, err := a.store.AddMessage(attemptID, "assistant", reply)
 	if err == nil {
@@ -299,7 +300,7 @@ func (a *App) review(w http.ResponseWriter, r *http.Request) {
 	attempt.Code = code
 	_, _ = a.codeFiles.Write(*attempt, code)
 	memory, _ := a.store.ProblemMemory(attempt.ProblemID)
-	review, _ := a.codex.Review(r.Context(), *problem, *attempt, code, memory)
+	review, _ := a.ai.Review(r.Context(), *problem, *attempt, code, memory)
 	updated, err := a.store.UpdateAttemptReview(attemptID, code, review)
 	if err != nil {
 		respond(w, nil, err)

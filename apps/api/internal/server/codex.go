@@ -121,7 +121,7 @@ func fallbackReview(summary string) ReviewResponse {
 		IsCorrect: false,
 		Summary:   summary,
 		Bugs: []string{
-			"AIレビューの生成に失敗しました。Codex CLIのログイン状態とCODEX_CLI_PATHを確認してください。",
+			"AIレビューの生成に失敗しました。選択中のAI CLIのログイン状態とCLI pathを確認してください。",
 		},
 		EdgeCases:             []string{},
 		Complexity:            ReviewComplexity{Time: "不明", Space: "不明"},
@@ -134,19 +134,19 @@ func fallbackReview(summary string) ReviewResponse {
 		GoogleReadiness:       "判定不能",
 		HireRecommendation:    "No Hire",
 		Scorecard: []ScorecardItem{
-			{Area: "Correctness", Score: 1, Signal: "AIレビューが失敗", Evidence: "Codex CLIから構造化レビューを取得できませんでした。", Action: "設定復旧後に再レビューする。"},
+			{Area: "Correctness", Score: 1, Signal: "AIレビューが失敗", Evidence: "AI CLIから構造化レビューを取得できませんでした。", Action: "設定復旧後に再レビューする。"},
 			{Area: "Communication", Score: 2, Signal: "自己説明が必要", Evidence: "外部レビューなしで計算量と不変条件を説明する必要があります。", Action: "dry runと計算量説明をチャットで行う。"},
 		},
-		ShadowNotes: []string{"Codex CLIの失敗により、bar raiser判定は保守的にNo Hire扱いです。"},
+		ShadowNotes: []string{"AI CLIの失敗により、bar raiser判定は保守的にNo Hire扱いです。"},
 		MiniRounds: []MiniRound{
 			{Kind: "coding_followup", Question: "この実装をテストなしでどう検証しますか？", Bar: "主要な境界条件を手でdry runできる。"},
 			{Kind: "behavioral", Question: "面接中にツールが使えない状況で、どう品質を担保しますか？", Bar: "制約下での検証戦略を説明できる。"},
 		},
 		DetectedWeaknesses: []WeaknessSignal{
-			{Category: "tooling_resilience", Signal: "AIレビュー失敗時の自己検証が必要", Severity: 3, Evidence: "Codex CLIからレビューを取得できなかった。", Drill: "テストなしで3ケースdry runする。"},
+			{Category: "tooling_resilience", Signal: "AIレビュー失敗時の自己検証が必要", Severity: 3, Evidence: "AI CLIからレビューを取得できなかった。", Drill: "テストなしで3ケースdry runする。"},
 		},
-		DiscussionPlan:           []string{"Codex CLIの設定復旧後に、解法説明、計算量、代替案の順に再レビューする。"},
-		NextReviewRecommendation: "Codex CLIの設定を直したあと、もう一度レビューを実行してください。",
+		DiscussionPlan:           []string{"AI CLIの設定復旧後に、解法説明、計算量、代替案の順に再レビューする。"},
+		NextReviewRecommendation: "AI CLIの設定を直したあと、もう一度レビューを実行してください。",
 	}
 }
 

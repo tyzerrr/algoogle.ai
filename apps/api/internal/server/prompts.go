@@ -22,6 +22,7 @@ func buildChatPrompt(problem Problem, attempt Attempt, messages []ChatMessage, u
 Your job is to guide the candidate through the problem with Socratic questions. Do not reveal the final solution unless the user explicitly asks for it or has already solved the problem. Ask only one main question at a time.
 
 Interview configuration:
+- AI provider: %s
 - Company preset: %s
 - Mode: %s
 - Current phase: %s
@@ -68,7 +69,7 @@ Conversation so far:
 Candidate message:
 %s
 
-Respond as the interviewer. Keep it concise and interview-like. Ask exactly one main question, with at most two short supporting prompts.`, attempt.CompanyPreset, attempt.CompanyPreset, attempt.InterviewMode, attempt.CurrentPhase, attempt.TimeLimitSeconds, !attempt.NoRun, !attempt.NoAutocomplete, attempt.RequiresPlan, companyInterviewInstructions(attempt.CompanyPreset), mode, problem.Title, problem.Difficulty, problem.Pattern, problem.Statement, strings.Join(problem.Constraints, "; "), string(testCases), string(memoryJSON), attempt.Code, strings.Join(conversation, "\n"), userMessage)
+Respond as the interviewer. Keep it concise and interview-like. Ask exactly one main question, with at most two short supporting prompts.`, attempt.CompanyPreset, aiProviderLabel(attempt.AIProvider), attempt.CompanyPreset, attempt.InterviewMode, attempt.CurrentPhase, attempt.TimeLimitSeconds, !attempt.NoRun, !attempt.NoAutocomplete, attempt.RequiresPlan, companyInterviewInstructions(attempt.CompanyPreset), mode, problem.Title, problem.Difficulty, problem.Pattern, problem.Statement, strings.Join(problem.Constraints, "; "), string(testCases), string(memoryJSON), attempt.Code, strings.Join(conversation, "\n"), userMessage)
 }
 
 func buildReviewPrompt(problem Problem, attempt Attempt, code string, memory ProblemMemory) string {
@@ -92,6 +93,7 @@ Constraints:
 %s
 
 Interview configuration:
+- AI provider: %s
 - Company preset: %s
 - Mode: %s
 - Local run allowed: %t
@@ -129,7 +131,7 @@ Return only JSON matching the schema. Use Japanese for all human-readable string
 Use scorecard scores from 1 to 4:
 1 = below bar, 2 = weak / inconsistent, 3 = meets bar, 4 = strong signal.
 
-Be strict. Passing local tests is not enough. Penalize missing clarifying questions, missing brute force, weak dry run, hand-wavy complexity, no proof, slow pacing, or dependency on running code.`, attempt.CompanyPreset, problem.Title, problem.Difficulty, problem.Pattern, problem.Statement, strings.Join(problem.Constraints, "\n"), attempt.CompanyPreset, attempt.InterviewMode, !attempt.NoRun, !attempt.NoAutocomplete, companyEvaluationInstructions(attempt.CompanyPreset), string(memoryJSON), code, testResult)
+Be strict. Passing local tests is not enough. Penalize missing clarifying questions, missing brute force, weak dry run, hand-wavy complexity, no proof, slow pacing, or dependency on running code.`, attempt.CompanyPreset, problem.Title, problem.Difficulty, problem.Pattern, problem.Statement, strings.Join(problem.Constraints, "\n"), aiProviderLabel(attempt.AIProvider), attempt.CompanyPreset, attempt.InterviewMode, !attempt.NoRun, !attempt.NoAutocomplete, companyEvaluationInstructions(attempt.CompanyPreset), string(memoryJSON), code, testResult)
 }
 
 func companyInterviewInstructions(companyPreset string) string {

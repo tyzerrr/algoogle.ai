@@ -63,6 +63,7 @@ type Attempt struct {
 	CodeFileUpdatedAt      string          `json:"code_file_updated_at,omitempty"`
 	Status                 string          `json:"status"`
 	Outcome                string          `json:"outcome"`
+	AIProvider             string          `json:"ai_provider"`
 	CompanyPreset          string          `json:"company_preset"`
 	InterviewMode          string          `json:"interview_mode"`
 	CurrentPhase           string          `json:"current_phase"`
@@ -183,6 +184,7 @@ type CreateAttemptRequest struct {
 	ProblemID     string `json:"problem_id"`
 	Language      string `json:"language"`
 	Code          string `json:"code"`
+	AIProvider    string `json:"ai_provider"`
 	CompanyPreset string `json:"company_preset"`
 	InterviewMode string `json:"interview_mode"`
 }
@@ -251,6 +253,7 @@ type AttemptMemory struct {
 	ID                     string `json:"id"`
 	Status                 string `json:"status"`
 	Outcome                string `json:"outcome"`
+	AIProvider             string `json:"ai_provider"`
 	CompanyPreset          string `json:"company_preset"`
 	InterviewMode          string `json:"interview_mode"`
 	FollowUpCount          int    `json:"follow_up_count"`

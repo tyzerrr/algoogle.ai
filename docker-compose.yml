@@ -10,6 +10,9 @@ services:
       CODEX_CLI_PATH: codex
       CODEX_WORKDIR: /app/apps/api
       CODEX_CLI_TIMEOUT_SECONDS: "240"
+      CLAUDE_CLI_PATH: claude
+      CLAUDE_WORKDIR: /app/apps/api
+      CLAUDE_CLI_TIMEOUT_SECONDS: "240"
       PYTHON_BIN: python3
       CODE_WORKSPACE_DIR: /workspace
       CODE_WORKSPACE_PUBLIC_DIR: ./workspace
@@ -17,6 +20,7 @@ services:
       - api_data:/data
       - ./workspace:/workspace
       - ${HOME}/.codex:/root/.codex:ro
+      - ${HOME}/.claude:/root/.claude:ro
 
   web:
     build:

@@ -14,7 +14,7 @@ FROM node:22-bookworm-slim
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates python3 \
   && rm -rf /var/lib/apt/lists/* \
-  && npm install -g @openai/codex@0.137.0
+  && npm install -g @openai/codex@0.137.0 @anthropic-ai/claude-code@2.1.119
 
 WORKDIR /app/apps/api
 
@@ -27,6 +27,9 @@ ENV PYTHON_BIN=python3
 ENV CODEX_CLI_PATH=codex
 ENV CODEX_WORKDIR=/app/apps/api
 ENV CODEX_CLI_TIMEOUT_SECONDS=180
+ENV CLAUDE_CLI_PATH=claude
+ENV CLAUDE_WORKDIR=/app/apps/api
+ENV CLAUDE_CLI_TIMEOUT_SECONDS=180
 ENV CODE_WORKSPACE_DIR=/workspace
 ENV CODE_WORKSPACE_PUBLIC_DIR=./workspace
 
