@@ -10,9 +10,11 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
 export default function CodeEditor({
   value,
   onChange,
+  noAutocomplete = false,
 }: {
   value: string;
   onChange: (value: string) => void;
+  noAutocomplete?: boolean;
 }) {
   return (
     <div className="editorFrame">
@@ -31,6 +33,11 @@ export default function CodeEditor({
           tabSize: 4,
           wordWrap: "on",
           padding: { top: 14, bottom: 14 },
+          quickSuggestions: noAutocomplete ? false : true,
+          suggestOnTriggerCharacters: !noAutocomplete,
+          acceptSuggestionOnCommitCharacter: !noAutocomplete,
+          parameterHints: { enabled: !noAutocomplete },
+          wordBasedSuggestions: noAutocomplete ? "off" : "matchingDocuments",
         }}
       />
     </div>

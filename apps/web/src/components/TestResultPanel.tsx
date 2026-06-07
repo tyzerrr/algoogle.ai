@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle, Timer } from "lucide-react";
+import { CheckCircle2, LockKeyhole, XCircle, Timer } from "lucide-react";
 import type { RunResult } from "@/lib/types";
 
 function renderValue(value: unknown) {
@@ -11,21 +11,25 @@ export default function TestResultPanel({ result }: { result?: RunResult }) {
     return <div className="empty">テストを実行すると結果がここに表示されます。</div>;
   }
   const notConfigured = result.status === "not_configured";
+  const disabled = result.status === "disabled";
+  const neutral = notConfigured || disabled;
 
   return (
     <div className="reviewBlock">
       <div className="resultMeta">
-        <span className={result.passed || notConfigured ? "status" : "status statusNeeds"}>
-          {result.passed || notConfigured ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
-          {notConfigured ? "テスト未登録" : result.passed ? "全テスト通過" : "要確認"}
+        <span className={result.passed ? "status" : neutral ? "status statusTodo" : "status statusNeeds"}>
+          {disabled ? <LockKeyhole size={16} /> : result.passed || notConfigured ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+          {disabled ? "本番モード: 実行なし" : notConfigured ? "テスト未登録" : result.passed ? "全テスト通過" : "要確認"}
         </span>
-        <span className="tag">
-          <Timer size={15} />
-          {result.duration_ms}ms
-        </span>
+        {!disabled ? (
+          <span className="tag">
+            <Timer size={15} />
+            {result.duration_ms}ms
+          </span>
+        ) : null}
       </div>
 
-      {result.error ? <div className={notConfigured ? "empty" : "error"}>{result.error}</div> : null}
+      {result.error ? <div className={neutral ? "empty" : "error"}>{result.error}</div> : null}
 
       <div className="resultList">
         {result.results.map((item) => (

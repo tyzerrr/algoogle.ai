@@ -204,6 +204,118 @@ h3 {
   transform: none;
 }
 
+.interviewControl {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.9fr) minmax(220px, 0.78fr) minmax(320px, 1.2fr);
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.controlCluster {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.controlClusterWide {
+  align-content: space-between;
+}
+
+.controlHeading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.controlHeading strong,
+.controlHeading span {
+  display: block;
+}
+
+.controlHeading span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-2);
+  border-radius: 7px;
+}
+
+.controlCluster:nth-child(2) .segmented {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.segmentButton {
+  min-height: 34px;
+  padding: 0 7px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.segmentButtonActive {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px rgba(17, 24, 39, 0.08);
+}
+
+.modeFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.timerBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: #102235;
+  color: #f8fafc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.86rem;
+  font-weight: 850;
+}
+
+.phaseRail {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.phaseStep {
+  min-width: 0;
+  min-height: 26px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  background: #edf1f5;
+  color: var(--muted);
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.phaseStepActive {
+  background: #dcefed;
+  color: var(--primary);
+}
+
 .band {
   padding: 22px;
   background: var(--surface);
@@ -427,6 +539,15 @@ h3 {
   font-weight: 750;
 }
 
+.syncMeta {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .chat {
   display: flex;
   flex-direction: column;
@@ -539,6 +660,70 @@ h3 {
   line-height: 1.65;
 }
 
+.reviewBlock h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scorecardGrid,
+.miniRoundGrid,
+.weaknessGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 9px;
+}
+
+.scorecardItem,
+.miniRound,
+.weaknessCard {
+  min-width: 0;
+  padding: 12px;
+  background: #fbfcfe;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.scorecardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.scoreNumber {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: #e8f4f0;
+  color: var(--ok);
+  font-weight: 850;
+}
+
+.actionText {
+  margin-bottom: 0;
+  color: #243447;
+  font-weight: 720;
+}
+
+.barMeter {
+  height: 8px;
+  overflow: hidden;
+  background: #e8edf2;
+  border-radius: 999px;
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #13795b, #b54535);
+}
+
 .empty {
   display: grid;
   place-items: center;
@@ -561,6 +746,7 @@ h3 {
 
 @media (max-width: 980px) {
   .dailyLayout,
+  .interviewControl,
   .interviewShell {
     grid-template-columns: 1fr;
   }
@@ -595,7 +781,16 @@ h3 {
     flex-direction: column;
   }
 
+  .syncMeta {
+    justify-content: flex-start;
+  }
+
   .editorFrame {
     height: 390px;
+  }
+
+  .segmented,
+  .phaseRail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

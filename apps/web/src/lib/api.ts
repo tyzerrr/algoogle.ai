@@ -2,7 +2,9 @@ import type {
   Attempt,
   ChatMessage,
   CodeFileResponse,
+  CompanyPreset,
   DailyResponse,
+  InterviewMode,
   Problem,
   ProblemListItem,
   ReviewDashboard,
@@ -40,10 +42,21 @@ export const api = {
   daily: () => apiFetch<DailyResponse>("/daily"),
   problems: () => apiFetch<ProblemListItem[]>("/problems"),
   problem: (id: string) => apiFetch<Problem>(`/problems/${id}`),
-  createAttempt: (problemId: string, code?: string) =>
+  createAttempt: (
+    problemId: string,
+    code?: string,
+    companyPreset: CompanyPreset = "google",
+    interviewMode: InterviewMode = "real",
+  ) =>
     apiFetch<Attempt>("/attempts", {
       method: "POST",
-      body: JSON.stringify({ problem_id: problemId, language: "python", code: code ?? "" }),
+      body: JSON.stringify({
+        problem_id: problemId,
+        language: "python",
+        code: code ?? "",
+        company_preset: companyPreset,
+        interview_mode: interviewMode,
+      }),
     }),
   messages: (attemptId: string) => apiFetch<ChatMessage[]>(`/attempts/${attemptId}/chat`),
   codeFile: (attemptId: string) => apiFetch<CodeFileResponse>(`/attempts/${attemptId}/code-file`),
@@ -56,6 +69,11 @@ export const api = {
     apiFetch<ChatMessage>(`/attempts/${attemptId}/chat`, {
       method: "POST",
       body: JSON.stringify({ message, english_mode: englishMode }),
+    }),
+  nudge: (attemptId: string, reason: string) =>
+    apiFetch<ChatMessage>(`/attempts/${attemptId}/nudge`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
     }),
   run: (attemptId: string, code: string) =>
     apiFetch<{ attempt: Attempt; result: RunResult }>(`/attempts/${attemptId}/run`, {

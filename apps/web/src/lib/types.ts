@@ -6,6 +6,8 @@ export type MasteryStatus =
   | "first_try_clean"
   | "first_try_with_followups"
   | "solved_after_retry";
+export type CompanyPreset = "google" | "meta" | "amazon" | "generic";
+export type InterviewMode = "real" | "practice";
 
 export type ProblemListItem = {
   id: string;
@@ -83,8 +85,27 @@ export type ReviewResponse = {
   interview_feedback: string[];
   mistakes_to_remember: string[];
   google_readiness: string;
+  hire_recommendation: string;
+  scorecard: ScorecardItem[];
+  shadow_notes: string[];
+  mini_rounds: MiniRound[];
+  detected_weaknesses: WeaknessSignal[];
   discussion_plan: string[];
   next_review_recommendation: string;
+};
+
+export type ScorecardItem = {
+  area: string;
+  score: number;
+  signal: string;
+  evidence: string;
+  action: string;
+};
+
+export type MiniRound = {
+  kind: string;
+  question: string;
+  bar: string;
 };
 
 export type Attempt = {
@@ -97,6 +118,13 @@ export type Attempt = {
   code_file_updated_at?: string;
   status: string;
   outcome: string;
+  company_preset: CompanyPreset;
+  interview_mode: InterviewMode;
+  current_phase: string;
+  time_limit_seconds: number;
+  no_run: boolean;
+  no_autocomplete: boolean;
+  requires_plan: boolean;
   follow_up_count: number;
   solved_without_followups: boolean;
   mistake_summary?: string;
@@ -148,11 +176,32 @@ export type WeakPattern = {
   count: number;
 };
 
+export type WeaknessSignal = {
+  id?: string;
+  attempt_id?: string;
+  problem_id?: string;
+  category: string;
+  signal: string;
+  severity: number;
+  evidence: string;
+  drill: string;
+  created_at?: string;
+};
+
+export type WeaknessTrend = {
+  category: string;
+  count: number;
+  average_severity: number;
+  last_seen_at: string;
+  suggested_drill: string;
+};
+
 export type ReviewDashboard = {
   recent_attempts: Attempt[];
   recent_follow_ups: FollowUpQuestion[];
   mistakes_to_remember: LearningNote[];
   weak_patterns: WeakPattern[];
+  weakness_graph: WeaknessTrend[];
   problems_for_today: ProblemListItem[];
 };
 
