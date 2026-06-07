@@ -116,6 +116,20 @@ func (c *CodexClient) Review(ctx context.Context, problem Problem, attempt Attem
 	return review, nil
 }
 
+func (c *CodexClient) SuggestWhiteboard(ctx context.Context, problem Problem, attempt Attempt, messages []ChatMessage, memory ProblemMemory, userMessage string) (WhiteboardSuggestion, error) {
+	schema := whiteboardSuggestionJSONSchema()
+	raw, err := c.Generate(ctx, buildWhiteboardSuggestionPrompt(problem, attempt, messages, memory, userMessage), &schema)
+	if err != nil {
+		return fallbackWhiteboardSuggestion(err.Error()), err
+	}
+	var suggestion WhiteboardSuggestion
+	if err := json.Unmarshal([]byte(extractJSONObject(raw)), &suggestion); err != nil {
+		return fallbackWhiteboardSuggestion("WhiteBoard提案のJSONを解析できませんでした: " + raw), err
+	}
+	normalizeWhiteboardSuggestion(&suggestion)
+	return suggestion, nil
+}
+
 func fallbackReview(summary string) ReviewResponse {
 	return ReviewResponse{
 		IsCorrect: false,

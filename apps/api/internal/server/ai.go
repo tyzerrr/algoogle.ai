@@ -15,6 +15,7 @@ import (
 type InterviewAI interface {
 	Chat(ctx context.Context, problem Problem, attempt Attempt, messages []ChatMessage, userMessage string, englishMode bool, memory ProblemMemory) (string, error)
 	Review(ctx context.Context, problem Problem, attempt Attempt, code string, memory ProblemMemory) (ReviewResponse, error)
+	SuggestWhiteboard(ctx context.Context, problem Problem, attempt Attempt, messages []ChatMessage, memory ProblemMemory, userMessage string) (WhiteboardSuggestion, error)
 }
 
 type AIService struct {
@@ -35,6 +36,10 @@ func (s *AIService) Chat(ctx context.Context, problem Problem, attempt Attempt, 
 
 func (s *AIService) Review(ctx context.Context, problem Problem, attempt Attempt, code string, memory ProblemMemory) (ReviewResponse, error) {
 	return s.client(attempt.AIProvider).Review(ctx, problem, attempt, code, memory)
+}
+
+func (s *AIService) SuggestWhiteboard(ctx context.Context, problem Problem, attempt Attempt, messages []ChatMessage, memory ProblemMemory, userMessage string) (WhiteboardSuggestion, error) {
+	return s.client(attempt.AIProvider).SuggestWhiteboard(ctx, problem, attempt, messages, memory, userMessage)
 }
 
 func (s *AIService) client(provider string) InterviewAI {
@@ -144,4 +149,18 @@ func (c *ClaudeClient) Review(ctx context.Context, problem Problem, attempt Atte
 		return fallbackReview("AIレビューのJSONを解析できませんでした: " + raw), err
 	}
 	return review, nil
+}
+
+func (c *ClaudeClient) SuggestWhiteboard(ctx context.Context, problem Problem, attempt Attempt, messages []ChatMessage, memory ProblemMemory, userMessage string) (WhiteboardSuggestion, error) {
+	schema := whiteboardSuggestionJSONSchema()
+	raw, err := c.Generate(ctx, buildWhiteboardSuggestionPrompt(problem, attempt, messages, memory, userMessage), &schema)
+	if err != nil {
+		return fallbackWhiteboardSuggestion(err.Error()), err
+	}
+	var suggestion WhiteboardSuggestion
+	if err := json.Unmarshal([]byte(extractJSONObject(raw)), &suggestion); err != nil {
+		return fallbackWhiteboardSuggestion("WhiteBoard提案のJSONを解析できませんでした: " + raw), err
+	}
+	normalizeWhiteboardSuggestion(&suggestion)
+	return suggestion, nil
 }

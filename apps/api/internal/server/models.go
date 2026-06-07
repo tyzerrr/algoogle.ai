@@ -208,6 +208,44 @@ type NudgeRequest struct {
 	Reason string `json:"reason"`
 }
 
+type WhiteboardArtifact struct {
+	ID        string `json:"id"`
+	AttemptID string `json:"attempt_id"`
+	ProblemID string `json:"problem_id"`
+	Kind      string `json:"kind"`
+	Topic     string `json:"topic"`
+	Prompt    string `json:"prompt"`
+	Content   string `json:"content"`
+	Version   int    `json:"version"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type WhiteboardRequest struct {
+	Kind    string `json:"kind"`
+	Topic   string `json:"topic"`
+	Prompt  string `json:"prompt"`
+	Content string `json:"content"`
+}
+
+type WhiteboardSuggestionRequest struct {
+	Message string `json:"message"`
+}
+
+type WhiteboardSuggestion struct {
+	UseWhiteboard  bool   `json:"use_whiteboard"`
+	Kind           string `json:"kind"`
+	Topic          string `json:"topic"`
+	Prompt         string `json:"prompt"`
+	StarterContent string `json:"starter_content"`
+	Reason         string `json:"reason"`
+}
+
+type WhiteboardSuggestionResponse struct {
+	Suggestion *WhiteboardSuggestion `json:"suggestion"`
+	Whiteboard *WhiteboardArtifact   `json:"whiteboard,omitempty"`
+}
+
 type CodeFileResponse struct {
 	Path      string `json:"path"`
 	Content   string `json:"content"`
@@ -266,8 +304,9 @@ type AttemptMemory struct {
 }
 
 type ProblemMemory struct {
-	Attempts   []AttemptMemory    `json:"attempts"`
-	FollowUps  []FollowUpQuestion `json:"follow_ups"`
-	Mistakes   []LearningNote     `json:"mistakes"`
-	Weaknesses []WeaknessSignal   `json:"weaknesses"`
+	Attempts    []AttemptMemory      `json:"attempts"`
+	FollowUps   []FollowUpQuestion   `json:"follow_ups"`
+	Mistakes    []LearningNote       `json:"mistakes"`
+	Weaknesses  []WeaknessSignal     `json:"weaknesses"`
+	Whiteboards []WhiteboardArtifact `json:"whiteboards"`
 }

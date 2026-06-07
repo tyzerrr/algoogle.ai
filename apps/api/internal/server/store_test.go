@@ -144,6 +144,66 @@ func TestStorePersistsChatAndReviewNotes(t *testing.T) {
 	}
 }
 
+func TestStorePersistsWhiteboardsInAttemptAndMemory(t *testing.T) {
+	store, err := NewStore("sqlite:///:memory:")
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	problems, err := LoadSeedProblems()
+	if err != nil {
+		t.Fatalf("load seed: %v", err)
+	}
+	if err := store.Seed(problems); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	attempt, err := store.CreateAttempt(CreateAttemptRequest{ProblemID: "valid-parentheses"})
+	if err != nil {
+		t.Fatalf("create attempt: %v", err)
+	}
+	whiteboard, err := store.CreateWhiteboard(attempt.ID, WhiteboardRequest{
+		Kind:    "mermaid",
+		Topic:   "stack transitions",
+		Prompt:  "sequence diagramでpush/popの流れを説明してください。",
+		Content: "sequenceDiagram\n  Candidate->>Interviewer: explain stack",
+	})
+	if err != nil {
+		t.Fatalf("create whiteboard: %v", err)
+	}
+	if whiteboard.Kind != "mermaid_sequence" || whiteboard.Version != 1 || whiteboard.ProblemID != "valid-parentheses" {
+		t.Fatalf("unexpected whiteboard: %#v", whiteboard)
+	}
+
+	updated, err := store.UpdateWhiteboard(attempt.ID, whiteboard.ID, WhiteboardRequest{
+		Kind:    "ds",
+		Topic:   "stack invariant",
+		Prompt:  "保持する不変条件を書いてください。",
+		Content: "Invariant:\n- stack contains unmatched opening brackets",
+	})
+	if err != nil {
+		t.Fatalf("update whiteboard: %v", err)
+	}
+	if updated.Kind != "data_structure" || updated.Version != 2 || updated.Topic != "stack invariant" {
+		t.Fatalf("unexpected updated whiteboard: %#v", updated)
+	}
+
+	items, err := store.ListWhiteboardsForAttempt(attempt.ID)
+	if err != nil {
+		t.Fatalf("list whiteboards: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != whiteboard.ID || items[0].Content != updated.Content {
+		t.Fatalf("unexpected whiteboard list: %#v", items)
+	}
+
+	memory, err := store.ProblemMemory("valid-parentheses")
+	if err != nil {
+		t.Fatalf("problem memory: %v", err)
+	}
+	if len(memory.Whiteboards) != 1 || memory.Whiteboards[0].ID != whiteboard.ID {
+		t.Fatalf("expected whiteboard in problem memory, got %#v", memory.Whiteboards)
+	}
+}
+
 func findProblem(problems []ProblemListItem, id string) *ProblemListItem {
 	for i := range problems {
 		if problems[i].ID == id {

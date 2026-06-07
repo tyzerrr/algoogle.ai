@@ -67,6 +67,10 @@ func (a *App) routes() http.Handler {
 	r.Post("/attempts/{attemptID}/chat", a.chat)
 	r.Get("/attempts/{attemptID}/chat", a.listChat)
 	r.Post("/attempts/{attemptID}/nudge", a.nudge)
+	r.Get("/attempts/{attemptID}/whiteboards", a.listWhiteboards)
+	r.Post("/attempts/{attemptID}/whiteboards", a.createWhiteboard)
+	r.Put("/attempts/{attemptID}/whiteboards/{whiteboardID}", a.updateWhiteboard)
+	r.Post("/attempts/{attemptID}/whiteboard-suggestion", a.suggestWhiteboard)
 	r.Get("/attempts/{attemptID}/code-file", a.getCodeFile)
 	r.Put("/attempts/{attemptID}/code-file", a.updateCodeFile)
 	r.Post("/attempts/{attemptID}/run", a.runCode)
@@ -183,6 +187,75 @@ func (a *App) nudge(w http.ResponseWriter, r *http.Request) {
 		_ = a.store.RecordFollowUps(attemptID, "silence_nudge", []string{message})
 	}
 	respond(w, created, err)
+}
+
+func (a *App) listWhiteboards(w http.ResponseWriter, r *http.Request) {
+	items, err := a.store.ListWhiteboardsForAttempt(chi.URLParam(r, "attemptID"))
+	respond(w, items, err)
+}
+
+func (a *App) createWhiteboard(w http.ResponseWriter, r *http.Request) {
+	attemptID := chi.URLParam(r, "attemptID")
+	var req WhiteboardRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	item, err := a.store.CreateWhiteboard(attemptID, req)
+	respond(w, item, err)
+}
+
+func (a *App) updateWhiteboard(w http.ResponseWriter, r *http.Request) {
+	attemptID := chi.URLParam(r, "attemptID")
+	whiteboardID := chi.URLParam(r, "whiteboardID")
+	var req WhiteboardRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	item, err := a.store.UpdateWhiteboard(attemptID, whiteboardID, req)
+	respond(w, item, err)
+}
+
+func (a *App) suggestWhiteboard(w http.ResponseWriter, r *http.Request) {
+	attemptID := chi.URLParam(r, "attemptID")
+	var req WhiteboardSuggestionRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	attempt, err := a.store.GetAttempt(attemptID)
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	if synced, syncErr := a.readSyncedCode(*attempt); syncErr == nil {
+		attempt.Code = synced
+	}
+	problem, err := a.store.GetProblem(attempt.ProblemID)
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	messages, _ := a.store.ListMessages(attemptID)
+	memory, _ := a.store.ProblemMemory(attempt.ProblemID)
+	suggestion, suggestErr := a.ai.SuggestWhiteboard(r.Context(), *problem, *attempt, messages, memory, req.Message)
+	if suggestErr != nil {
+		suggestion = fallbackWhiteboardSuggestion(suggestErr.Error())
+	}
+	normalizeWhiteboardSuggestion(&suggestion)
+	var whiteboard *WhiteboardArtifact
+	if suggestion.UseWhiteboard {
+		whiteboard, err = a.store.CreateWhiteboard(attemptID, WhiteboardRequest{
+			Kind:    suggestion.Kind,
+			Topic:   suggestion.Topic,
+			Prompt:  suggestion.Prompt,
+			Content: suggestion.StarterContent,
+		})
+		if err != nil {
+			respond(w, nil, err)
+			return
+		}
+		_ = a.store.RecordFollowUps(attemptID, "whiteboard", []string{suggestion.Prompt})
+	}
+	respond(w, WhiteboardSuggestionResponse{Suggestion: &suggestion, Whiteboard: whiteboard}, nil)
 }
 
 func (a *App) getCodeFile(w http.ResponseWriter, r *http.Request) {

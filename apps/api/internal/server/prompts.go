@@ -42,6 +42,8 @@ Rules:
 - Require multiple approaches when reasonable. If they only have one, nudge with a restrained hint without giving away the full solution.
 - Focus on understanding, constraints, brute force, optimization, edge cases, invariants, complexity, and implementation details.
 - After code is written, review correctness and ask follow-ups about proof, failure modes, time complexity, and space complexity.
+- When a whiteboard would make the interview more realistic, explicitly ask the candidate to use WhiteBoard and name the mode: pseudocode, Mermaid sequence diagram, data structure, invariants, state transition, or complexity table.
+- If whiteboard artifacts are present in candidate memory, inspect them as shared interview context and ask precise questions about gaps, invalid transitions, missing invariants, or incomplete pseudocode.
 - If this is a repeated problem, use the candidate memory to ask a new, harder follow-up based on old mistakes. Avoid simply repeating an old question unless you are checking recovery.
 - Keep a high bar. Be kind, but do not accept vague explanations.
 - In real mode, act as if the candidate cannot run code or use autocomplete. Ask for dry runs and manual verification.
@@ -132,6 +134,72 @@ Use scorecard scores from 1 to 4:
 1 = below bar, 2 = weak / inconsistent, 3 = meets bar, 4 = strong signal.
 
 Be strict. Passing local tests is not enough. Penalize missing clarifying questions, missing brute force, weak dry run, hand-wavy complexity, no proof, slow pacing, or dependency on running code.`, attempt.CompanyPreset, problem.Title, problem.Difficulty, problem.Pattern, problem.Statement, strings.Join(problem.Constraints, "\n"), aiProviderLabel(attempt.AIProvider), attempt.CompanyPreset, attempt.InterviewMode, !attempt.NoRun, !attempt.NoAutocomplete, companyEvaluationInstructions(attempt.CompanyPreset), string(memoryJSON), code, testResult)
+}
+
+func buildWhiteboardSuggestionPrompt(problem Problem, attempt Attempt, messages []ChatMessage, memory ProblemMemory, userMessage string) string {
+	conversation := []string{}
+	for _, message := range messages {
+		conversation = append(conversation, fmt.Sprintf("%s: %s", message.Role, message.Content))
+	}
+	memoryJSON, _ := json.MarshalIndent(memory, "", "  ")
+	return fmt.Sprintf(`You are the interviewer deciding whether the candidate should use a whiteboard-like artifact in a realistic coding interview.
+
+Return only JSON matching the schema. Use Japanese for all human-readable strings.
+
+Decide whether WhiteBoard would improve the interview right now.
+Use WhiteBoard when the candidate needs to:
+- sketch pseudocode before coding
+- explain data structures or invariants
+- draw a sequence of operations in Mermaid
+- reason through state transitions
+- compare time/space trade-offs
+- debug a proof or edge-case gap without running code
+
+Do not use WhiteBoard if the next best step is a single short verbal answer.
+
+Allowed kind values:
+- pseudocode
+- mermaid_sequence
+- data_structure
+- invariants
+- state_transition
+- complexity_table
+
+Interview configuration:
+- AI provider: %s
+- Company preset: %s
+- Mode: %s
+- Current phase: %s
+- Local run allowed: %t
+- Autocomplete allowed: %t
+
+Problem:
+Title: %s
+Difficulty: %s
+Pattern: %s
+Statement: %s
+Constraints: %s
+
+Candidate memory, including prior whiteboards:
+%s
+
+Current code:
+%s
+
+Conversation so far:
+%s
+
+Candidate latest request or UI context:
+%s
+
+If use_whiteboard is true, produce:
+- kind: the best whiteboard kind
+- topic: the exact topic to discuss
+- prompt: the interviewer instruction the candidate should respond to
+- starter_content: a useful starter scaffold. For mermaid_sequence, return valid Mermaid sequenceDiagram syntax.
+- reason: why this whiteboard is useful now
+
+If use_whiteboard is false, still fill kind/topic/prompt/starter_content with empty strings and explain why in reason.`, aiProviderLabel(attempt.AIProvider), attempt.CompanyPreset, attempt.InterviewMode, attempt.CurrentPhase, !attempt.NoRun, !attempt.NoAutocomplete, problem.Title, problem.Difficulty, problem.Pattern, problem.Statement, strings.Join(problem.Constraints, "; "), string(memoryJSON), attempt.Code, strings.Join(conversation, "\n"), userMessage)
 }
 
 func companyInterviewInstructions(companyPreset string) string {
@@ -257,5 +325,24 @@ func reviewJSONSchema() string {
     "discussion_plan",
     "next_review_recommendation"
   ]
+}`
+}
+
+func whiteboardSuggestionJSONSchema() string {
+	return `{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "use_whiteboard": { "type": "boolean" },
+    "kind": {
+      "type": "string",
+      "enum": ["pseudocode", "mermaid_sequence", "data_structure", "invariants", "state_transition", "complexity_table", ""]
+    },
+    "topic": { "type": "string" },
+    "prompt": { "type": "string" },
+    "starter_content": { "type": "string" },
+    "reason": { "type": "string" }
+  },
+  "required": ["use_whiteboard", "kind", "topic", "prompt", "starter_content", "reason"]
 }`
 }

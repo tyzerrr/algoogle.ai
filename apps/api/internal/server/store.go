@@ -134,11 +134,27 @@ func (s *Store) migrate() error {
 			FOREIGN KEY (attempt_id) REFERENCES attempts(id),
 			FOREIGN KEY (problem_id) REFERENCES problems(id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS whiteboard_artifacts (
+			id TEXT PRIMARY KEY,
+			attempt_id TEXT NOT NULL,
+			problem_id TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			topic TEXT NOT NULL,
+			prompt TEXT NOT NULL,
+			content TEXT NOT NULL,
+			version INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			FOREIGN KEY (attempt_id) REFERENCES attempts(id),
+			FOREIGN KEY (problem_id) REFERENCES problems(id)
+		)`,
 		`CREATE INDEX IF NOT EXISTS idx_attempts_problem_created ON attempts(problem_id, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_attempt_created ON chat_messages(attempt_id, created_at ASC)`,
 		`CREATE INDEX IF NOT EXISTS idx_followups_problem_created ON follow_up_questions(problem_id, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_weakness_problem_created ON weakness_signals(problem_id, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_weakness_category_created ON weakness_signals(category, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_whiteboards_attempt_updated ON whiteboard_artifacts(attempt_id, updated_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_whiteboards_problem_updated ON whiteboard_artifacts(problem_id, updated_at DESC)`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.Exec(statement); err != nil {
@@ -475,6 +491,147 @@ func (s *Store) ListMessages(attemptID string) ([]ChatMessage, error) {
 	return messages, rows.Err()
 }
 
+func (s *Store) CreateWhiteboard(attemptID string, req WhiteboardRequest) (*WhiteboardArtifact, error) {
+	attempt, err := s.GetAttempt(attemptID)
+	if err != nil {
+		return nil, err
+	}
+	timestamp := now()
+	item := WhiteboardArtifact{
+		ID:        newID(),
+		AttemptID: attempt.ID,
+		ProblemID: attempt.ProblemID,
+		Kind:      normalizeWhiteboardKind(req.Kind),
+		Topic:     trimOrDefault(req.Topic, "WhiteBoard discussion"),
+		Prompt:    strings.TrimSpace(req.Prompt),
+		Content:   strings.TrimSpace(req.Content),
+		Version:   1,
+		CreatedAt: timestamp,
+		UpdatedAt: timestamp,
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO whiteboard_artifacts
+		(id, attempt_id, problem_id, kind, topic, prompt, content, version, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		item.ID,
+		item.AttemptID,
+		item.ProblemID,
+		item.Kind,
+		item.Topic,
+		item.Prompt,
+		item.Content,
+		item.Version,
+		item.CreatedAt,
+		item.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+func (s *Store) UpdateWhiteboard(attemptID, whiteboardID string, req WhiteboardRequest) (*WhiteboardArtifact, error) {
+	if _, err := s.GetAttempt(attemptID); err != nil {
+		return nil, err
+	}
+	_, err := s.db.Exec(
+		`UPDATE whiteboard_artifacts
+		SET kind = ?, topic = ?, prompt = ?, content = ?, version = version + 1, updated_at = ?
+		WHERE id = ? AND attempt_id = ?`,
+		normalizeWhiteboardKind(req.Kind),
+		trimOrDefault(req.Topic, "WhiteBoard discussion"),
+		strings.TrimSpace(req.Prompt),
+		strings.TrimSpace(req.Content),
+		now(),
+		whiteboardID,
+		attemptID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetWhiteboard(attemptID, whiteboardID)
+}
+
+func (s *Store) GetWhiteboard(attemptID, whiteboardID string) (*WhiteboardArtifact, error) {
+	row := s.db.QueryRow(
+		`SELECT id, attempt_id, problem_id, kind, topic, prompt, content, version, created_at, updated_at
+		FROM whiteboard_artifacts WHERE id = ? AND attempt_id = ?`,
+		whiteboardID,
+		attemptID,
+	)
+	item, err := scanWhiteboard(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return item, nil
+}
+
+func (s *Store) ListWhiteboardsForAttempt(attemptID string) ([]WhiteboardArtifact, error) {
+	rows, err := s.db.Query(
+		`SELECT id, attempt_id, problem_id, kind, topic, prompt, content, version, created_at, updated_at
+		FROM whiteboard_artifacts WHERE attempt_id = ? ORDER BY updated_at DESC`,
+		attemptID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanWhiteboards(rows)
+}
+
+func (s *Store) whiteboardsForProblem(problemID string, limit int) ([]WhiteboardArtifact, error) {
+	rows, err := s.db.Query(
+		`SELECT id, attempt_id, problem_id, kind, topic, prompt, content, version, created_at, updated_at
+		FROM whiteboard_artifacts WHERE problem_id = ? ORDER BY updated_at DESC LIMIT ?`,
+		problemID,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanWhiteboards(rows)
+}
+
+type whiteboardScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+func scanWhiteboard(row whiteboardScanner) (*WhiteboardArtifact, error) {
+	var item WhiteboardArtifact
+	if err := row.Scan(
+		&item.ID,
+		&item.AttemptID,
+		&item.ProblemID,
+		&item.Kind,
+		&item.Topic,
+		&item.Prompt,
+		&item.Content,
+		&item.Version,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	item.Kind = normalizeWhiteboardKind(item.Kind)
+	return &item, nil
+}
+
+func scanWhiteboards(rows *sql.Rows) ([]WhiteboardArtifact, error) {
+	items := []WhiteboardArtifact{}
+	for rows.Next() {
+		item, err := scanWhiteboard(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *item)
+	}
+	return items, rows.Err()
+}
+
 func (s *Store) RecordFollowUps(attemptID, source string, questions []string) error {
 	attempt, err := s.GetAttempt(attemptID)
 	if err != nil {
@@ -790,7 +947,7 @@ func (s *Store) ProblemMemory(problemID string) (ProblemMemory, error) {
 	}
 	defer attemptRows.Close()
 
-	memory := ProblemMemory{Attempts: []AttemptMemory{}, FollowUps: []FollowUpQuestion{}, Mistakes: []LearningNote{}, Weaknesses: []WeaknessSignal{}}
+	memory := ProblemMemory{Attempts: []AttemptMemory{}, FollowUps: []FollowUpQuestion{}, Mistakes: []LearningNote{}, Weaknesses: []WeaknessSignal{}, Whiteboards: []WhiteboardArtifact{}}
 	for attemptRows.Next() {
 		var item AttemptMemory
 		var solvedWithout int
@@ -837,6 +994,12 @@ func (s *Store) ProblemMemory(problemID string) (ProblemMemory, error) {
 		return ProblemMemory{}, err
 	}
 	memory.Weaknesses = weaknesses
+
+	whiteboards, err := s.whiteboardsForProblem(problemID, 8)
+	if err != nil {
+		return ProblemMemory{}, err
+	}
+	memory.Whiteboards = whiteboards
 
 	noteRows, err := s.db.Query(
 		`SELECT n.id, n.problem_id, p.title, n.mistake_type, n.note, n.next_review_date, n.created_at
