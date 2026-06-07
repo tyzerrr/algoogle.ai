@@ -30,6 +30,12 @@ func (r *CodeRunner) Run(ctx context.Context, problemID, code string, testCases 
 		result.DurationMS = elapsed(start)
 		return result
 	}
+	if len(testCases) == 0 {
+		result.Status = "not_configured"
+		result.Error = "この問題のローカルテストはまだ登録されていません。実装後はAIレビューで方針、計算量、エッジケースを詰めてください。"
+		result.DurationMS = elapsed(start)
+		return result
+	}
 
 	dir, err := os.MkdirTemp("", "algosensei-run-*")
 	if err != nil {
@@ -138,7 +144,7 @@ def __algosensei_run_case(case):
         return sol.two_sum(data["nums"], data["target"])
     if __ALGOSENSEI_PROBLEM_ID == "valid-parentheses":
         return sol.is_valid(data["s"])
-    if __ALGOSENSEI_PROBLEM_ID == "longest-substring-without-repeating":
+    if __ALGOSENSEI_PROBLEM_ID == "longest-substring-without-repeating" or __ALGOSENSEI_PROBLEM_ID == "longest-substring-without-repeating-characters":
         return sol.length_of_longest_substring(data["s"])
     if __ALGOSENSEI_PROBLEM_ID == "binary-search":
         return sol.binary_search(data["nums"], data["target"])

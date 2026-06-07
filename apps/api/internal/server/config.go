@@ -13,6 +13,8 @@ type Config struct {
 	CodexWorkingDir     string
 	CodexTimeoutSeconds int
 	PythonBin           string
+	CodeWorkspaceDir    string
+	CodeWorkspacePublic string
 }
 
 func LoadConfig() Config {
@@ -24,6 +26,8 @@ func LoadConfig() Config {
 		CodexWorkingDir:     env("CODEX_WORKDIR", "."),
 		CodexTimeoutSeconds: envInt("CODEX_CLI_TIMEOUT_SECONDS", 180),
 		PythonBin:           env("PYTHON_BIN", "python3"),
+		CodeWorkspaceDir:    env("CODE_WORKSPACE_DIR", "./workspace"),
+		CodeWorkspacePublic: env("CODE_WORKSPACE_PUBLIC_DIR", "./workspace"),
 	}
 }
 

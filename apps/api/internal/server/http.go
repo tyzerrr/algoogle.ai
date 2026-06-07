@@ -4,17 +4,19 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 )
 
 type App struct {
-	cfg    Config
-	store  *Store
-	runner *CodeRunner
-	codex  *CodexClient
-	router http.Handler
+	cfg       Config
+	store     *Store
+	runner    *CodeRunner
+	codex     *CodexClient
+	codeFiles *CodeFileManager
+	router    http.Handler
 }
 
 func New(cfg Config) (*App, error) {
@@ -31,10 +33,11 @@ func New(cfg Config) (*App, error) {
 	}
 
 	app := &App{
-		cfg:    cfg,
-		store:  store,
-		runner: NewCodeRunner(cfg.PythonBin),
-		codex:  NewCodexClient(cfg),
+		cfg:       cfg,
+		store:     store,
+		runner:    NewCodeRunner(cfg.PythonBin),
+		codex:     NewCodexClient(cfg),
+		codeFiles: NewCodeFileManager(cfg.CodeWorkspaceDir, cfg.CodeWorkspacePublic),
 	}
 	app.router = app.routes()
 	return app, nil
@@ -62,6 +65,8 @@ func (a *App) routes() http.Handler {
 	r.Get("/problems/{problemID}/attempts", a.listAttemptsForProblem)
 	r.Post("/attempts/{attemptID}/chat", a.chat)
 	r.Get("/attempts/{attemptID}/chat", a.listChat)
+	r.Get("/attempts/{attemptID}/code-file", a.getCodeFile)
+	r.Put("/attempts/{attemptID}/code-file", a.updateCodeFile)
 	r.Post("/attempts/{attemptID}/run", a.runCode)
 	r.Post("/attempts/{attemptID}/review", a.review)
 	r.Get("/daily", a.daily)
@@ -94,11 +99,19 @@ func (a *App) createAttempt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	attempt, err := a.store.CreateAttempt(req)
+	if err == nil {
+		a.codeFiles.Decorate(attempt)
+		memory, _ := a.store.ProblemMemory(attempt.ProblemID)
+		_, _ = a.store.EnsureInitialMessage(attempt.ID, initialInterviewMessage(memory))
+	}
 	respond(w, attempt, err)
 }
 
 func (a *App) getAttempt(w http.ResponseWriter, r *http.Request) {
 	attempt, err := a.store.GetAttempt(chi.URLParam(r, "attemptID"))
+	if err == nil {
+		a.codeFiles.Decorate(attempt)
+	}
 	respond(w, attempt, err)
 }
 
@@ -123,6 +136,9 @@ func (a *App) chat(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, err)
 		return
 	}
+	if synced, syncErr := a.readSyncedCode(*attempt); syncErr == nil {
+		attempt.Code = synced
+	}
 	problem, err := a.store.GetProblem(attempt.ProblemID)
 	if err != nil {
 		respond(w, nil, err)
@@ -133,17 +149,55 @@ func (a *App) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	messages, _ := a.store.ListMessages(attemptID)
-	reply, err := a.codex.Chat(r.Context(), *problem, *attempt, messages, req.Message, req.EnglishMode)
+	memory, _ := a.store.ProblemMemory(attempt.ProblemID)
+	reply, err := a.codex.Chat(r.Context(), *problem, *attempt, messages, req.Message, req.EnglishMode, memory)
 	if err != nil {
 		reply = "Codex CLIを使ったAI面接官を起動できませんでした。CODEX_CLI_PATH、ログイン状態、Docker利用時の ~/.codex マウントを確認してください。\n\n詳細: " + err.Error()
 	}
 	message, err := a.store.AddMessage(attemptID, "assistant", reply)
+	if err == nil {
+		_ = a.store.RecordFollowUps(attemptID, "chat", extractQuestions(reply))
+	}
 	respond(w, message, err)
 }
 
 func (a *App) listChat(w http.ResponseWriter, r *http.Request) {
 	messages, err := a.store.ListMessages(chi.URLParam(r, "attemptID"))
 	respond(w, messages, err)
+}
+
+func (a *App) getCodeFile(w http.ResponseWriter, r *http.Request) {
+	attempt, err := a.store.GetAttempt(chi.URLParam(r, "attemptID"))
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	info, err := a.codeFiles.Ensure(*attempt)
+	respond(w, info, err)
+}
+
+func (a *App) updateCodeFile(w http.ResponseWriter, r *http.Request) {
+	attemptID := chi.URLParam(r, "attemptID")
+	var req CodeFileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	attempt, err := a.store.GetAttempt(attemptID)
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	info, err := a.codeFiles.Write(*attempt, req.Code)
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	if _, err := a.store.UpdateAttemptCode(attemptID, req.Code); err != nil {
+		respond(w, nil, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
 }
 
 func (a *App) runCode(w http.ResponseWriter, r *http.Request) {
@@ -162,8 +216,15 @@ func (a *App) runCode(w http.ResponseWriter, r *http.Request) {
 	}
 	code := req.Code
 	if code == "" {
-		code = attempt.Code
+		synced, syncErr := a.readSyncedCode(*attempt)
+		if syncErr == nil {
+			code = synced
+		} else {
+			code = attempt.Code
+		}
 	}
+	attempt.Code = code
+	_, _ = a.codeFiles.Write(*attempt, code)
 	result := a.runner.Run(r.Context(), problem.ID, code, problem.TestCases)
 	status := result.Status
 	if status == "" {
@@ -174,6 +235,7 @@ func (a *App) runCode(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, err)
 		return
 	}
+	a.codeFiles.Decorate(updated)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"attempt": updated, "result": result})
 }
 
@@ -193,14 +255,23 @@ func (a *App) review(w http.ResponseWriter, r *http.Request) {
 	}
 	code := req.Code
 	if code == "" {
-		code = attempt.Code
+		synced, syncErr := a.readSyncedCode(*attempt)
+		if syncErr == nil {
+			code = synced
+		} else {
+			code = attempt.Code
+		}
 	}
-	review, _ := a.codex.Review(r.Context(), *problem, *attempt, code)
+	attempt.Code = code
+	_, _ = a.codeFiles.Write(*attempt, code)
+	memory, _ := a.store.ProblemMemory(attempt.ProblemID)
+	review, _ := a.codex.Review(r.Context(), *problem, *attempt, code, memory)
 	updated, err := a.store.UpdateAttemptReview(attemptID, code, review)
 	if err != nil {
 		respond(w, nil, err)
 		return
 	}
+	a.codeFiles.Decorate(updated)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"attempt": updated, "review": review})
 }
 
@@ -234,4 +305,38 @@ func writeJSON(w http.ResponseWriter, status int, value interface{}) {
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
+}
+
+func (a *App) readSyncedCode(attempt Attempt) (string, error) {
+	info, err := a.codeFiles.Ensure(attempt)
+	if err != nil {
+		return "", err
+	}
+	if _, err := a.store.UpdateAttemptCode(attempt.ID, info.Content); err != nil {
+		return "", err
+	}
+	return info.Content, nil
+}
+
+func initialInterviewMessage(memory ProblemMemory) string {
+	prefix := ""
+	if len(memory.Attempts) > 1 || len(memory.Mistakes) > 0 || len(memory.FollowUps) > 0 {
+		prefix = "この問題は過去の履歴も見ながら少し厳しめに確認します。前回のミスやフォローアップも踏まえます。\n\n"
+	}
+	return prefix + "まず実装に入る前に、どのように解くつもりかを説明してください。全探索の方針、より良い解法の見込み、使うデータ構造、気になるエッジケースを1つずつ短く述べてください。コードはまだ書かなくて大丈夫です。"
+}
+
+func extractQuestions(content string) []string {
+	questions := []string{}
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(line, "-"))
+		line = strings.TrimSpace(strings.TrimPrefix(line, "・"))
+		if line == "" {
+			continue
+		}
+		if strings.Contains(line, "?") || strings.Contains(line, "？") || strings.Contains(line, "ですか") || strings.Contains(line, "ますか") {
+			questions = append(questions, line)
+		}
+	}
+	return questions
 }

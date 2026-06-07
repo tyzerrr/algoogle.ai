@@ -98,14 +98,14 @@ func (c *CodexClient) Generate(ctx context.Context, prompt string, schema *strin
 	return strings.TrimSpace(stdout.String()), nil
 }
 
-func (c *CodexClient) Chat(ctx context.Context, problem Problem, attempt Attempt, messages []ChatMessage, userMessage string, englishMode bool) (string, error) {
-	prompt := buildChatPrompt(problem, attempt, messages, userMessage, englishMode)
+func (c *CodexClient) Chat(ctx context.Context, problem Problem, attempt Attempt, messages []ChatMessage, userMessage string, englishMode bool, memory ProblemMemory) (string, error) {
+	prompt := buildChatPrompt(problem, attempt, messages, userMessage, englishMode, memory)
 	return c.Generate(ctx, prompt, nil)
 }
 
-func (c *CodexClient) Review(ctx context.Context, problem Problem, attempt Attempt, code string) (ReviewResponse, error) {
+func (c *CodexClient) Review(ctx context.Context, problem Problem, attempt Attempt, code string, memory ProblemMemory) (ReviewResponse, error) {
 	schema := reviewJSONSchema()
-	raw, err := c.Generate(ctx, buildReviewPrompt(problem, attempt, code), &schema)
+	raw, err := c.Generate(ctx, buildReviewPrompt(problem, attempt, code, memory), &schema)
 	if err != nil {
 		return fallbackReview(err.Error()), err
 	}
@@ -125,9 +125,14 @@ func fallbackReview(summary string) ReviewResponse {
 		},
 		EdgeCases:                []string{},
 		Complexity:               ReviewComplexity{Time: "不明", Space: "不明"},
+		ComplexityQuestions:      []string{"この解法の最悪ケースの時間計算量と、その根拠を説明してください。"},
+		AlternativeApproaches:    []string{"ローカルでレビューできないため、まず全探索と最適化案を自分で比較してください。"},
+		FollowUpQuestions:        []string{"同じバグを面接中にどう検知しますか？"},
 		ReadabilityFeedback:      []string{},
 		InterviewFeedback:        []string{"テスト結果をもとに、自分で計算量と不変条件を説明してみてください。"},
 		MistakesToRemember:       []string{"AIレビューが失敗した場合でも、失敗したテストケースを1つずつ手で追う。"},
+		GoogleReadiness:          "判定不能",
+		DiscussionPlan:           []string{"Codex CLIの設定復旧後に、解法説明、計算量、代替案の順に再レビューする。"},
 		NextReviewRecommendation: "Codex CLIの設定を直したあと、もう一度レビューを実行してください。",
 	}
 }
