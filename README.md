@@ -12,10 +12,14 @@ LeetCodeの解答暗記ではなく、AI面接官との会話を通じて、問�
 - ARAI60の60問をカード形式で表示
 - 問題ごとに一発OK、フォローアップ込みOK、再挑戦OK、要復習を管理
 - 問題詳細画面で、実装前からAI面接官と方針を会話
+- Google / Meta / Amazon / Generic の面接プリセットを切り替え
+- Real Interview Modeで、ローカル実行なし・補完なし・方針説明必須の練習
+- 30秒以上沈黙した場合、AI面接官が発話や不変条件の説明を促す
 - Monaco Editorとローカル `workspace/` のPythonファイルを双方向同期
 - ローカルのテストケースをsubprocessで実行
 - Codex CLIをサブプロセスとして起動し、AIチャットとAIレビューを実行
-- attempts、chat history、follow-up questions、learning notesをSQLiteに保存
+- Submit後に採用判定、scorecard、shadow evaluator notes、mini roundsを表示
+- attempts、chat history、follow-up questions、learning notes、weakness signalsをSQLiteに保存
 
 ## 問題セット
 
@@ -83,6 +87,31 @@ NeoVimで保存すると、アプリ上のMonaco Editorへ自動反映されま�
 
 `workspace/` は `.gitignore` 済みです。練習中のコードやメモがcommitされないようにしています。
 
+## Real Interview Mode
+
+問題詳細画面では、上部のInterview Controlから会社プリセットと練習モードを選べます。
+
+- `Google`: 曖昧さ、制約、証明、不変条件、深いフォローアップを重視
+- `Meta`: 実装速度、簡潔な説明、dry run、追加問題への対応を重視
+- `Amazon`: trade-off、顧客影響のあるedge case、行動面の説明も確認
+- `Generic`: 総合的なcoding interview練習
+
+`Real` ではローカル実行ボタンを無効化し、Monaco Editorの補完も抑制します。面接官は、実装前にbrute force、最適化方針、データ構造、不変条件、edge caseを確認します。
+
+`Practice` ではローカル実行と補完を使えるので、学習初期や復習に向いています。
+
+## Review Loop
+
+AIレビューは単なる正誤判定ではなく、実際の面接後フィードバックに近い形で保存します。
+
+- `hire_recommendation`: Strong Hire / Hire / Lean Hire / Lean No Hire / No Hire
+- `scorecard`: correctness、communication、complexity、code qualityなどを1-4で評価
+- `shadow_notes`: 面接官が裏で残す観察メモ
+- `mini_rounds`: 追加coding follow-up、behavioral、system/product thinkingの質問
+- `weakness signals`: 次回の問題やフォローアップに使う弱点履歴
+
+復習画面では、過去のfollow-up、覚えておくべきミス、苦手パターン、弱点グラフを見られます。
+
 ## ホストで開発する場合
 
 API:
@@ -139,7 +168,8 @@ GitHub Actionsでは、Go APIのテスト、Next.jsの型チェック/ビルド�
 - ARAI60を10問ずつページングして見る
 - 問題詳細でPythonコードを書く
 - Monaco EditorまたはNeoVimで編集する
+- Google / Meta / Amazon風のReal Interview Modeで練習する
 - ローカルテストケースを実行する
 - Codex CLI経由のAI面接官と会話する
 - Codex CLI経由のAIレビューをJSON構造で保存する
-- フォローアップ質問と過去のミスをSQLiteに保存し、次回の面接官プロンプトへ反映する
+- scorecard、採用判定、フォローアップ質問、過去のミス、弱点signalをSQLiteに保存し、次回の面接官プロンプトへ反映する
