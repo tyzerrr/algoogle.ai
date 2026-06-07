@@ -1,0 +1,32 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:////data/algo_sensei.db
+      CODEX_CLI_PATH: codex
+      CODEX_WORKDIR: /app/apps/api
+      CODEX_CLI_TIMEOUT_SECONDS: "240"
+      PYTHON_BIN: python3
+    volumes:
+      - api_data:/data
+      - ${HOME}/.codex:/root/.codex:ro
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    depends_on:
+      - api
+
+volumes:
+  api_data:
