@@ -10,13 +10,14 @@ export default function TestResultPanel({ result }: { result?: RunResult }) {
   if (!result) {
     return <div className="empty">テストを実行すると結果がここに表示されます。</div>;
   }
+  const notConfigured = result.status === "not_configured";
 
   return (
     <div className="reviewBlock">
       <div className="resultMeta">
-        <span className={result.passed ? "status" : "status statusNeeds"}>
-          {result.passed ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
-          {result.passed ? "全テスト通過" : "要確認"}
+        <span className={result.passed || notConfigured ? "status" : "status statusNeeds"}>
+          {result.passed || notConfigured ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+          {notConfigured ? "テスト未登録" : result.passed ? "全テスト通過" : "要確認"}
         </span>
         <span className="tag">
           <Timer size={15} />
@@ -24,7 +25,7 @@ export default function TestResultPanel({ result }: { result?: RunResult }) {
         </span>
       </div>
 
-      {result.error ? <div className="error">{result.error}</div> : null}
+      {result.error ? <div className={notConfigured ? "empty" : "error"}>{result.error}</div> : null}
 
       <div className="resultList">
         {result.results.map((item) => (

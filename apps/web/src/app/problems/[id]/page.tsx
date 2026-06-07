@@ -1,15 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { Bot, ClipboardCheck, Loader2, Play, RotateCcw } from "lucide-react";
+import { Bot, ClipboardCheck, FileCode2, Loader2, Play, RotateCcw } from "lucide-react";
 import AIChat from "@/components/AIChat";
 import CodeEditor from "@/components/CodeEditor";
 import ProblemStatement from "@/components/ProblemStatement";
 import ReviewPanel from "@/components/ReviewPanel";
 import TestResultPanel from "@/components/TestResultPanel";
 import { api } from "@/lib/api";
-import type { Attempt, ChatMessage, Problem, ReviewResponse, RunResult } from "@/lib/types";
+import type {
+  Attempt,
+  ChatMessage,
+  CodeFileResponse,
+  Problem,
+  ReviewResponse,
+  RunResult,
+} from "@/lib/types";
 
 export default function ProblemDetailPage() {
   const params = useParams<{ id: string }>();
@@ -20,9 +27,19 @@ export default function ProblemDetailPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [runResult, setRunResult] = useState<RunResult | undefined>();
   const [review, setReview] = useState<ReviewResponse | undefined>();
+  const [codeFile, setCodeFile] = useState<CodeFileResponse | null>(null);
+  const [syncStatus, setSyncStatus] = useState("同期準備中");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"chat" | "run" | "review" | "reset" | null>(null);
   const [error, setError] = useState("");
+  const codeRef = useRef("");
+  const suppressSaveRef = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastKnownUpdatedAtRef = useRef("");
+
+  useEffect(() => {
+    codeRef.current = code;
+  }, [code]);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,6 +57,9 @@ export default function ProblemDetailPage() {
         setAttempt(nextAttempt);
         setRunResult(nextAttempt.test_result);
         setReview(nextAttempt.ai_review);
+        const file = await api.codeFile(nextAttempt.id);
+        if (cancelled) return;
+        applyCodeFile(file, "NeoVim同期が有効です");
         setMessages(await api.messages(nextAttempt.id));
       } catch (err) {
         if (!cancelled) setError((err as Error).message);
@@ -56,6 +76,87 @@ export default function ProblemDetailPage() {
 
   const canAct = useMemo(() => Boolean(problem && attempt && !busy), [problem, attempt, busy]);
 
+  function applyCodeFile(file: CodeFileResponse, status: string) {
+    setCodeFile(file);
+    lastKnownUpdatedAtRef.current = file.updated_at;
+    if (file.content !== codeRef.current) {
+      suppressSaveRef.current = true;
+      setCode(file.content);
+    }
+    setSyncStatus(status);
+  }
+
+  async function saveCodeNow() {
+    if (!attempt) return codeRef.current;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    setSyncStatus("保存中");
+    const file = await api.saveCodeFile(attempt.id, codeRef.current);
+    setCodeFile(file);
+    lastKnownUpdatedAtRef.current = file.updated_at;
+    setSyncStatus("保存済み");
+    return codeRef.current;
+  }
+
+  useEffect(() => {
+    if (!attempt || !codeFile) return undefined;
+    if (suppressSaveRef.current) {
+      suppressSaveRef.current = false;
+      return undefined;
+    }
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setSyncStatus("保存待ち");
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      api
+        .saveCodeFile(attempt.id, codeRef.current)
+        .then((file) => {
+          setCodeFile(file);
+          lastKnownUpdatedAtRef.current = file.updated_at;
+          setSyncStatus("保存済み");
+        })
+        .catch((err: Error) => setSyncStatus(`同期失敗: ${err.message}`));
+    }, 700);
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
+  }, [attempt?.id, code]);
+
+  useEffect(() => {
+    if (!attempt) return undefined;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      if (saveTimerRef.current) return;
+      api
+        .codeFile(attempt.id)
+        .then((file) => {
+          if (cancelled) return;
+          if (
+            lastKnownUpdatedAtRef.current &&
+            file.updated_at !== lastKnownUpdatedAtRef.current &&
+            file.content !== codeRef.current
+          ) {
+            applyCodeFile(file, "NeoVimから反映");
+            return;
+          }
+          setCodeFile(file);
+          lastKnownUpdatedAtRef.current = file.updated_at;
+        })
+        .catch((err: Error) => {
+          if (!cancelled) setSyncStatus(`同期失敗: ${err.message}`);
+        });
+    }, 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [attempt?.id]);
+
   async function resetAttempt() {
     if (!problem) return;
     setBusy("reset");
@@ -66,7 +167,9 @@ export default function ProblemDetailPage() {
       setCode(problem.starter_code);
       setRunResult(undefined);
       setReview(undefined);
-      setMessages([]);
+      const file = await api.codeFile(nextAttempt.id);
+      applyCodeFile(file, "新しいattemptを同期");
+      setMessages(await api.messages(nextAttempt.id));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -79,7 +182,8 @@ export default function ProblemDetailPage() {
     setBusy("run");
     setError("");
     try {
-      const response = await api.run(attempt.id, code);
+      const nextCode = await saveCodeNow();
+      const response = await api.run(attempt.id, nextCode);
       setAttempt(response.attempt);
       setRunResult(response.result);
     } catch (err) {
@@ -94,7 +198,8 @@ export default function ProblemDetailPage() {
     setBusy("review");
     setError("");
     try {
-      const response = await api.review(attempt.id, code);
+      const nextCode = await saveCodeNow();
+      const response = await api.review(attempt.id, nextCode);
       setAttempt(response.attempt);
       setReview(response.review);
     } catch (err) {
@@ -117,6 +222,7 @@ export default function ProblemDetailPage() {
     setBusy("chat");
     setError("");
     try {
+      await saveCodeNow();
       const reply = await api.sendMessage(attempt.id, message, englishMode);
       const storedMessages = await api.messages(attempt.id);
       setMessages(storedMessages.length ? storedMessages : (current) => current.concat(reply));
@@ -152,10 +258,15 @@ export default function ProblemDetailPage() {
           <p className="eyebrow">Interview room</p>
           <h1>{problem.title}</h1>
           <p className="muted">
-            問題を読み、方針を面接官に説明し、コードを書いてからテストとレビューに進みます。
+            まず方針を面接官に説明し、納得されたらNeoVimかブラウザで実装します。
           </p>
         </div>
         <div className="buttonRow">
+          {problem.source_url ? (
+            <a className="secondaryButton" href={problem.source_url} target="_blank" rel="noreferrer">
+              公式問題
+            </a>
+          ) : null}
           <button className="secondaryButton" type="button" onClick={resetAttempt} disabled={!canAct}>
             <RotateCcw size={18} />
             新しいattempt
@@ -204,9 +315,18 @@ export default function ProblemDetailPage() {
                 ) : (
                   <ClipboardCheck size={17} />
                 )}
-                レビュー
+                Submit
               </button>
             </div>
+          </div>
+          <div className="syncStrip">
+            <div>
+              <span className="syncLabel">
+                <FileCode2 size={16} /> NeoVim sync
+              </span>
+              <code className="syncPath">{codeFile?.path ? `nvim ${codeFile.path}` : "workspace を準備中"}</code>
+            </div>
+            <span className="syncState">{syncStatus}</span>
           </div>
           <CodeEditor value={code} onChange={setCode} />
 

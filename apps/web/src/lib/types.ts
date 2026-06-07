@@ -1,4 +1,11 @@
 export type ProblemStatus = "not_started" | "in_progress" | "needs_review" | "solved";
+export type MasteryStatus =
+  | "not_started"
+  | "in_progress"
+  | "needs_review"
+  | "first_try_clean"
+  | "first_try_with_followups"
+  | "solved_after_retry";
 
 export type ProblemListItem = {
   id: string;
@@ -7,7 +14,14 @@ export type ProblemListItem = {
   pattern: string;
   tags: string[];
   status: ProblemStatus;
+  mastery_status: MasteryStatus;
+  attempt_count: number;
+  follow_up_count: number;
+  solved_without_followups: boolean;
   last_attempted_at: string | null;
+  source_url?: string;
+  list_name?: string;
+  order_index: number;
 };
 
 export type Example = {
@@ -29,6 +43,9 @@ export type Problem = ProblemListItem & {
   starter_code: string;
   test_cases: TestCase[];
   solution_explanation?: string;
+  source_url?: string;
+  list_name?: string;
+  order_index: number;
   created_at: string;
 };
 
@@ -59,9 +76,14 @@ export type ReviewResponse = {
     time: string;
     space: string;
   };
+  complexity_questions: string[];
+  alternative_approaches: string[];
+  follow_up_questions: string[];
   readability_feedback: string[];
   interview_feedback: string[];
   mistakes_to_remember: string[];
+  google_readiness: string;
+  discussion_plan: string[];
   next_review_recommendation: string;
 };
 
@@ -71,11 +93,18 @@ export type Attempt = {
   problem_title?: string;
   language: string;
   code: string;
+  code_file_path?: string;
+  code_file_updated_at?: string;
   status: string;
+  outcome: string;
+  follow_up_count: number;
+  solved_without_followups: boolean;
+  mistake_summary?: string;
   test_result?: RunResult;
   ai_review?: ReviewResponse;
   hints_used: number;
   time_spent_seconds?: number;
+  completed_at?: string;
   created_at: string;
 };
 
@@ -104,6 +133,16 @@ export type LearningNote = {
   created_at: string;
 };
 
+export type FollowUpQuestion = {
+  id: string;
+  attempt_id: string;
+  problem_id: string;
+  question: string;
+  source: string;
+  answered: boolean;
+  created_at: string;
+};
+
 export type WeakPattern = {
   pattern: string;
   count: number;
@@ -111,7 +150,15 @@ export type WeakPattern = {
 
 export type ReviewDashboard = {
   recent_attempts: Attempt[];
+  recent_follow_ups: FollowUpQuestion[];
   mistakes_to_remember: LearningNote[];
   weak_patterns: WeakPattern[];
   problems_for_today: ProblemListItem[];
+};
+
+export type CodeFileResponse = {
+  path: string;
+  content: string;
+  updated_at: string;
+  size: number;
 };

@@ -1,6 +1,7 @@
 import type {
   Attempt,
   ChatMessage,
+  CodeFileResponse,
   DailyResponse,
   Problem,
   ProblemListItem,
@@ -45,6 +46,12 @@ export const api = {
       body: JSON.stringify({ problem_id: problemId, language: "python", code: code ?? "" }),
     }),
   messages: (attemptId: string) => apiFetch<ChatMessage[]>(`/attempts/${attemptId}/chat`),
+  codeFile: (attemptId: string) => apiFetch<CodeFileResponse>(`/attempts/${attemptId}/code-file`),
+  saveCodeFile: (attemptId: string, code: string) =>
+    apiFetch<CodeFileResponse>(`/attempts/${attemptId}/code-file`, {
+      method: "PUT",
+      body: JSON.stringify({ code }),
+    }),
   sendMessage: (attemptId: string, message: string, englishMode: boolean) =>
     apiFetch<ChatMessage>(`/attempts/${attemptId}/chat`, {
       method: "POST",

@@ -30,7 +30,7 @@ export default function AIChat({
     <form className="chat" onSubmit={submit}>
       <div className="messages">
         {messages.length === 0 ? (
-          <div className="empty">面接官に方針、詰まり、計算量の説明を投げられます。</div>
+          <div className="empty">面接官がまず解法方針を確認します。</div>
         ) : (
           messages.map((item) => (
             <div

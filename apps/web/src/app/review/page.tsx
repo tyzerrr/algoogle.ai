@@ -68,6 +68,21 @@ export default function ReviewPage() {
           </section>
 
           <section className="band">
+            <h2>最近のフォローアップ質問</h2>
+            {dashboard.recent_follow_ups.length === 0 ? (
+              <p className="muted">面接官やSubmit後レビューで出た質問がここに残ります。</p>
+            ) : (
+              <ul className="constraints">
+                {dashboard.recent_follow_ups.map((followUp) => (
+                  <li key={followUp.id}>
+                    <strong>{followUp.source}:</strong> {followUp.question}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="band">
             <h2>苦手パターン</h2>
             {dashboard.weak_patterns.length === 0 ? (
               <p className="muted">失敗した提出が増えると傾向が見えます。</p>
