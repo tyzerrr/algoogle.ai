@@ -47,6 +47,14 @@ Docker ComposeではLinux版の `@openai/codex` をAPIコンテナに入れ、�
 
 ## ローカル起動
 
+Makefileを使う場合:
+
+```bash
+make up
+```
+
+直接Docker Composeを使う場合:
+
 ```bash
 docker compose up --build
 ```
