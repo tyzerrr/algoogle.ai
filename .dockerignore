@@ -9,6 +9,7 @@
 **/*.tsbuildinfo
 
 data
+workspace
 *.db
 *.db-shm
 *.db-wal

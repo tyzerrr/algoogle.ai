@@ -20,6 +20,7 @@ __pycache__/
 *.db-shm
 *.db-wal
 data/
+workspace/
 
 # Env files
 .env

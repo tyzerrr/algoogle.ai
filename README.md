@@ -9,11 +9,19 @@ LeetCodeの解答暗記ではなく、AI面接官との会話を通じて、問�
 ## 特徴
 
 - 毎日のおすすめ問題を表示
-- 問題詳細画面でAI面接官と会話
-- Monaco EditorでPythonコードを編集
+- ARAI60の60問をカード形式で表示
+- 問題ごとに一発OK、フォローアップ込みOK、再挑戦OK、要復習を管理
+- 問題詳細画面で、実装前からAI面接官と方針を会話
+- Monaco Editorとローカル `workspace/` のPythonファイルを双方向同期
 - ローカルのテストケースをsubprocessで実行
 - Codex CLIをサブプロセスとして起動し、AIチャットとAIレビューを実行
-- attempts、chat history、learning notesをSQLiteに保存
+- attempts、chat history、follow-up questions、learning notesをSQLiteに保存
+
+## 問題セット
+
+問題リストは新井康平氏の「[コーディング面接対策のために解きたいLeetCode 60問](https://1kohei1.com/leetcode/)」をもとにしています。
+
+LeetCode本文の丸写しではなく、アプリ内では面接練習用カードとしてタイトル、カテゴリ、タグ、公式問題へのリンク、スターターコードを管理します。
 
 ## 技術スタック
 
@@ -63,6 +71,18 @@ docker compose up --build
 - API: http://localhost:8000
 - Health: http://localhost:8000/health
 
+## NeoVim同期
+
+attemptを開くと、APIが `workspace/` にPythonファイルを作ります。画面の `NeoVim sync` 行に表示されるコマンドで編集できます。
+
+```bash
+nvim ./workspace/<problem-id>-<attempt-id>.py
+```
+
+NeoVimで保存すると、アプリ上のMonaco Editorへ自動反映されます。アプリ側で編集した内容も同じファイルへ保存されます。
+
+`workspace/` は `.gitignore` 済みです。練習中のコードやメモがcommitされないようにしています。
+
 ## ホストで開発する場合
 
 API:
@@ -89,6 +109,8 @@ corepack pnpm dev
 - `CODEX_CLI_PATH`: Codex CLI実行ファイル
 - `CODEX_MODEL`: 必要な場合だけCodex CLIに渡すモデル名
 - `CODEX_WORKDIR`: Codex CLIの作業ディレクトリ
+- `CODE_WORKSPACE_DIR`: APIが同期ファイルを読み書きするディレクトリ
+- `CODE_WORKSPACE_PUBLIC_DIR`: Webに表示する同期ファイルのパス
 - `NEXT_PUBLIC_API_BASE_URL`: Webから参照するAPI URL
 
 ## テストとCI
@@ -114,9 +136,10 @@ GitHub Actionsでは、Go APIのテスト、Next.jsの型チェック/ビルド�
 
 - 今日のおすすめ問題を見る
 - 問題一覧を見る
+- ARAI60を10問ずつページングして見る
 - 問題詳細でPythonコードを書く
-- Monaco Editorで編集する
+- Monaco EditorまたはNeoVimで編集する
 - ローカルテストケースを実行する
 - Codex CLI経由のAI面接官と会話する
 - Codex CLI経由のAIレビューをJSON構造で保存する
-- attempts、chat history、learning notesをSQLiteに保存する
+- フォローアップ質問と過去のミスをSQLiteに保存し、次回の面接官プロンプトへ反映する

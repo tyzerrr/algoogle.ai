@@ -11,8 +11,11 @@ services:
       CODEX_WORKDIR: /app/apps/api
       CODEX_CLI_TIMEOUT_SECONDS: "240"
       PYTHON_BIN: python3
+      CODE_WORKSPACE_DIR: /workspace
+      CODE_WORKSPACE_PUBLIC_DIR: ./workspace
     volumes:
       - api_data:/data
+      - ./workspace:/workspace
       - ${HOME}/.codex:/root/.codex:ro
 
   web:

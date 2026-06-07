@@ -20,6 +20,7 @@ up start:
 	@printf '  Web: %s\n' 'http://localhost:3000'
 	@printf '  API: %s\n' 'http://localhost:8000'
 	@printf '  Health: %s\n\n' 'http://localhost:8000/health'
+	@printf '  NeoVim sync files: %s\n\n' './workspace'
 	$(COMPOSE) ps
 
 down stop:
