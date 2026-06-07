@@ -1,8 +1,19 @@
 # AlgoSensei
 
+AlgoSensei is a local, AI-assisted coding interview practice app for Google-style SWE interview training.
+
 ローカルで動く、AI対話型のコーディング面接トレーニングアプリです。
 
 LeetCodeの解答暗記ではなく、AI面接官との会話を通じて、問題理解、制約、全探索、最適化、エッジケース、計算量、説明力を鍛えることを目的にしています。
+
+## 特徴
+
+- 毎日のおすすめ問題を表示
+- 問題詳細画面でAI面接官と会話
+- Monaco EditorでPythonコードを編集
+- ローカルのテストケースをsubprocessで実行
+- Codex CLIをサブプロセスとして起動し、AIチャットとAIレビューを実行
+- attempts、chat history、learning notesをSQLiteに保存
 
 ## 技術スタック
 
@@ -24,6 +35,15 @@ codex exec --help
 ```
 
 Docker ComposeではLinux版の `@openai/codex` をAPIコンテナに入れ、ホストの `${HOME}/.codex` を読み取り専用でマウントします。APIキーは発行しません。
+
+## Credential管理
+
+このリポジトリはcredentialを含めない前提です。
+
+- OpenAI API keyは使わず、Codex CLIのログイン済みセッションを利用します
+- `.env` と `.env.*` は `.gitignore` で除外しています
+- Docker Composeでは `${HOME}/.codex` を読み取り専用でマウントします
+- `~/.codex`、API key、token、private keyはcommitしないでください
 
 ## ローカル起動
 
