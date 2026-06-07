@@ -1,6 +1,6 @@
-# AlgoSensei
+# algoogle.ai
 
-AlgoSensei is a local, AI-assisted coding interview practice app for Google-style SWE interview training.
+algoogle.ai is a local, AI-assisted coding interview practice app for SWE interview training.
 
 ローカルで動く、AI対話型のコーディング面接トレーニングアプリです。
 
