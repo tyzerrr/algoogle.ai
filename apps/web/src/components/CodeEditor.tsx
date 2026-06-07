@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
@@ -16,12 +17,24 @@ export default function CodeEditor({
   onChange: (value: string) => void;
   noAutocomplete?: boolean;
 }) {
+  const [editorTheme, setEditorTheme] = useState("vs");
+
+  useEffect(() => {
+    function syncEditorTheme() {
+      const theme = document.documentElement.dataset.theme;
+      setEditorTheme(theme === "dark" || theme === "netflix" ? "vs-dark" : "vs");
+    }
+    syncEditorTheme();
+    window.addEventListener("algosensei-theme-change", syncEditorTheme);
+    return () => window.removeEventListener("algosensei-theme-change", syncEditorTheme);
+  }, []);
+
   return (
     <div className="editorFrame">
       <MonacoEditor
         height="100%"
         language="python"
-        theme="vs-dark"
+        theme={editorTheme}
         value={value}
         onChange={(next) => onChange(next ?? "")}
         options={{

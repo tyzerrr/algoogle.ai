@@ -8,6 +8,8 @@ export type MasteryStatus =
   | "solved_after_retry";
 export type CompanyPreset = "google" | "meta" | "amazon" | "generic";
 export type InterviewMode = "real" | "practice";
+export type AIProvider = "codex" | "claude";
+export type ThemeMode = "light" | "dark" | "netflix";
 
 export type ProblemListItem = {
   id: string;
@@ -118,6 +120,7 @@ export type Attempt = {
   code_file_updated_at?: string;
   status: string;
   outcome: string;
+  ai_provider: AIProvider;
   company_preset: CompanyPreset;
   interview_mode: InterviewMode;
   current_phase: string;

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   Bot,
+  BrainCircuit,
   Building2,
   ClipboardCheck,
   FileCode2,
@@ -21,6 +22,7 @@ import ReviewPanel from "@/components/ReviewPanel";
 import TestResultPanel from "@/components/TestResultPanel";
 import { api } from "@/lib/api";
 import type {
+  AIProvider,
   Attempt,
   ChatMessage,
   CodeFileResponse,
@@ -30,6 +32,11 @@ import type {
   ReviewResponse,
   RunResult,
 } from "@/lib/types";
+
+const AI_PROVIDER_OPTIONS: { id: AIProvider; label: string; note: string }[] = [
+  { id: "codex", label: "Codex", note: "Codex CLI subprocess" },
+  { id: "claude", label: "Claude Code", note: "Claude Code CLI subprocess" },
+];
 
 const COMPANY_OPTIONS: { id: CompanyPreset; label: string; note: string }[] = [
   { id: "google", label: "Google", note: "曖昧さ、証明、深掘り" },
@@ -73,6 +80,7 @@ export default function ProblemDetailPage() {
   const [review, setReview] = useState<ReviewResponse | undefined>();
   const [codeFile, setCodeFile] = useState<CodeFileResponse | null>(null);
   const [syncStatus, setSyncStatus] = useState("同期準備中");
+  const [aiProvider, setAIProvider] = useState<AIProvider>("codex");
   const [companyPreset, setCompanyPreset] = useState<CompanyPreset>("google");
   const [interviewMode, setInterviewMode] = useState<InterviewMode>("real");
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
@@ -105,10 +113,14 @@ export default function ProblemDetailPage() {
         const nextAttempt = await api.createAttempt(
           problemId,
           nextProblem.starter_code,
+          aiProvider,
           companyPreset,
           interviewMode,
         );
         if (cancelled) return;
+        setAIProvider(nextAttempt.ai_provider);
+        setCompanyPreset(nextAttempt.company_preset);
+        setInterviewMode(nextAttempt.interview_mode);
         setAttempt(nextAttempt);
         setRunResult(nextAttempt.test_result);
         setReview(nextAttempt.ai_review);
@@ -263,6 +275,7 @@ export default function ProblemDetailPage() {
   }, [attempt?.id]);
 
   async function resetAttempt(
+    nextAIProvider: AIProvider = aiProvider,
     nextCompanyPreset: CompanyPreset = companyPreset,
     nextInterviewMode: InterviewMode = interviewMode,
   ) {
@@ -273,11 +286,13 @@ export default function ProblemDetailPage() {
       const nextAttempt = await api.createAttempt(
         problem.id,
         problem.starter_code,
+        nextAIProvider,
         nextCompanyPreset,
         nextInterviewMode,
       );
-      setCompanyPreset(nextCompanyPreset);
-      setInterviewMode(nextInterviewMode);
+      setAIProvider(nextAttempt.ai_provider);
+      setCompanyPreset(nextAttempt.company_preset);
+      setInterviewMode(nextAttempt.interview_mode);
       setAttempt(nextAttempt);
       setCode(problem.starter_code);
       setRunResult(undefined);
@@ -296,7 +311,12 @@ export default function ProblemDetailPage() {
 
   async function switchInterview(nextCompanyPreset: CompanyPreset, nextInterviewMode: InterviewMode) {
     if (nextCompanyPreset === companyPreset && nextInterviewMode === interviewMode) return;
-    await resetAttempt(nextCompanyPreset, nextInterviewMode);
+    await resetAttempt(aiProvider, nextCompanyPreset, nextInterviewMode);
+  }
+
+  async function switchAIProvider(nextAIProvider: AIProvider) {
+    if (nextAIProvider === aiProvider) return;
+    await resetAttempt(nextAIProvider, companyPreset, interviewMode);
   }
 
   async function runCode() {
@@ -414,6 +434,30 @@ export default function ProblemDetailPage() {
       <section className="interviewControl" aria-label="real interview controls">
         <div className="controlCluster">
           <div className="controlHeading">
+            <BrainCircuit size={18} />
+            <div>
+              <strong>AI provider</strong>
+              <span>{AI_PROVIDER_OPTIONS.find((option) => option.id === aiProvider)?.note}</span>
+            </div>
+          </div>
+          <div className="segmented segmentedTwo">
+            {AI_PROVIDER_OPTIONS.map((option) => (
+              <button
+                className={`segmentButton ${aiProvider === option.id ? "segmentButtonActive" : ""}`}
+                type="button"
+                key={option.id}
+                disabled={!canAct}
+                title={option.note}
+                onClick={() => switchAIProvider(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="controlCluster">
+          <div className="controlHeading">
             <Building2 size={18} />
             <div>
               <strong>Company preset</strong>
@@ -444,7 +488,7 @@ export default function ProblemDetailPage() {
               <span>{MODE_OPTIONS.find((option) => option.id === interviewMode)?.note}</span>
             </div>
           </div>
-          <div className="segmented">
+          <div className="segmented segmentedTwo">
             {MODE_OPTIONS.map((option) => (
               <button
                 className={`segmentButton ${interviewMode === option.id ? "segmentButtonActive" : ""}`}

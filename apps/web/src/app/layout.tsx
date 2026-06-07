@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BrainCircuit, ListChecks, RotateCcw } from "lucide-react";
+import ThemeSwitcher from "@/components/ThemeSwitcher";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ja">
+    <html lang="ja" suppressHydrationWarning>
       <body>
         <header className="topbar">
           <Link href="/" className="brand" aria-label="AlgoSensei home">
@@ -26,6 +27,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               <RotateCcw size={17} />
               復習
             </Link>
+            <ThemeSwitcher />
           </nav>
         </header>
         {children}

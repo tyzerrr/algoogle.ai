@@ -12,7 +12,107 @@
   --warn: #a15c00;
   --bad: #b42318;
   --code: #0b1020;
+  --topbar-bg: rgba(255, 255, 255, 0.94);
+  --soft-bg: #f8fafc;
+  --soft-2-bg: #fbfcfe;
+  --tag-bg: #e8edf2;
+  --tag-ink: #314256;
+  --status-bg: #edf7f3;
+  --status-needs-bg: #fff4e5;
+  --todo-bg: #eef2f6;
+  --phase-active-bg: #dcefed;
+  --difficulty-bg: #eaf3ff;
+  --difficulty-ink: #0b5cad;
+  --message-user-bg: #dff4ee;
+  --message-assistant-bg: #f1f4f8;
+  --timer-bg: #102235;
+  --timer-ink: #f8fafc;
+  --score-bg: #e8f4f0;
+  --action-ink: #243447;
+  --bar-track: #e8edf2;
+  --bar-fill: linear-gradient(90deg, #13795b, #b54535);
+  --card-hover: #aab7c5;
+  --error-bg: #fff0ee;
+  --error-line: #f0b9b2;
   --radius: 8px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111318;
+  --surface: #181b22;
+  --surface-2: #232833;
+  --ink: #f4f7fb;
+  --muted: #a7b0be;
+  --line: #313847;
+  --primary: #49c7ae;
+  --primary-ink: #07120f;
+  --accent: #f27d68;
+  --ok: #64d6a9;
+  --warn: #f5b85b;
+  --bad: #ff8a7b;
+  --code: #070b12;
+  --topbar-bg: rgba(24, 27, 34, 0.94);
+  --soft-bg: #202530;
+  --soft-2-bg: #1d222b;
+  --tag-bg: #2a3240;
+  --tag-ink: #d5dce8;
+  --status-bg: #183a31;
+  --status-needs-bg: #3c2e18;
+  --todo-bg: #252b35;
+  --phase-active-bg: #173f36;
+  --difficulty-bg: #17304f;
+  --difficulty-ink: #9dccff;
+  --message-user-bg: #173f36;
+  --message-assistant-bg: #232a36;
+  --timer-bg: #e8eef7;
+  --timer-ink: #10151d;
+  --score-bg: #173f36;
+  --action-ink: #e8eef7;
+  --bar-track: #2b3342;
+  --bar-fill: linear-gradient(90deg, #64d6a9, #f27d68);
+  --card-hover: #576579;
+  --error-bg: #3b1d1b;
+  --error-line: #7c332d;
+}
+
+:root[data-theme="netflix"] {
+  color-scheme: dark;
+  --bg: #050505;
+  --surface: #121212;
+  --surface-2: #202020;
+  --ink: #f5f5f1;
+  --muted: #b8b8b3;
+  --line: #333333;
+  --primary: #e50914;
+  --primary-ink: #ffffff;
+  --accent: #ffb000;
+  --ok: #55d187;
+  --warn: #ffb000;
+  --bad: #ff5a52;
+  --code: #070707;
+  --topbar-bg: rgba(5, 5, 5, 0.96);
+  --soft-bg: #191919;
+  --soft-2-bg: #171717;
+  --tag-bg: #282828;
+  --tag-ink: #f5f5f1;
+  --status-bg: #13381f;
+  --status-needs-bg: #3a2706;
+  --todo-bg: #242424;
+  --phase-active-bg: #34080b;
+  --difficulty-bg: #34080b;
+  --difficulty-ink: #ffb6ba;
+  --message-user-bg: #3a080b;
+  --message-assistant-bg: #222222;
+  --timer-bg: #e50914;
+  --timer-ink: #ffffff;
+  --score-bg: #300a0d;
+  --action-ink: #ffffff;
+  --bar-track: #2a2a2a;
+  --bar-fill: linear-gradient(90deg, #e50914, #ffb000);
+  --card-hover: #e50914;
+  --error-bg: #330c0e;
+  --error-line: #8f2028;
 }
 
 * {
@@ -31,6 +131,9 @@ body {
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   letter-spacing: 0;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
 }
 
 a {
@@ -57,7 +160,7 @@ button {
   justify-content: space-between;
   min-height: 58px;
   padding: 0 24px;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--topbar-bg);
   border-bottom: 1px solid var(--line);
   backdrop-filter: blur(12px);
 }
@@ -89,6 +192,34 @@ button {
 .nav a:hover {
   background: var(--surface-2);
   color: var(--ink);
+}
+
+.themeSwitcher {
+  display: inline-grid;
+  grid-template-columns: repeat(3, 32px);
+  gap: 3px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.themeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 30px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.themeButtonActive {
+  background: var(--surface);
+  color: var(--primary);
+  box-shadow: 0 0 0 1px rgba(17, 24, 39, 0.08);
 }
 
 .page {
@@ -206,7 +337,7 @@ h3 {
 
 .interviewControl {
   display: grid;
-  grid-template-columns: minmax(230px, 0.9fr) minmax(220px, 0.78fr) minmax(320px, 1.2fr);
+  grid-template-columns: minmax(210px, 0.7fr) minmax(230px, 0.9fr) minmax(220px, 0.72fr) minmax(320px, 1.2fr);
   gap: 10px;
   margin-bottom: 14px;
   padding: 12px;
@@ -251,7 +382,7 @@ h3 {
   border-radius: 7px;
 }
 
-.controlCluster:nth-child(2) .segmented {
+.segmentedTwo {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -286,8 +417,8 @@ h3 {
   min-height: 28px;
   padding: 0 9px;
   border-radius: 7px;
-  background: #102235;
-  color: #f8fafc;
+  background: var(--timer-bg);
+  color: var(--timer-ink);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.86rem;
   font-weight: 850;
@@ -304,7 +435,7 @@ h3 {
   min-height: 26px;
   padding: 5px 6px;
   border-radius: 6px;
-  background: #edf1f5;
+  background: var(--surface-2);
   color: var(--muted);
   text-align: center;
   font-size: 0.72rem;
@@ -312,7 +443,7 @@ h3 {
 }
 
 .phaseStepActive {
-  background: #dcefed;
+  background: var(--phase-active-bg);
   color: var(--primary);
 }
 
@@ -363,7 +494,7 @@ h3 {
 }
 
 .card:hover {
-  border-color: #aab7c5;
+  border-color: var(--card-hover);
 }
 
 .problemCard {
@@ -399,28 +530,28 @@ h3 {
 }
 
 .tag {
-  background: #e8edf2;
-  color: #314256;
+  background: var(--tag-bg);
+  color: var(--tag-ink);
 }
 
 .status {
-  background: #edf7f3;
+  background: var(--status-bg);
   color: var(--ok);
 }
 
 .statusNeeds {
-  background: #fff4e5;
+  background: var(--status-needs-bg);
   color: var(--warn);
 }
 
 .statusTodo {
-  background: #eef2f6;
+  background: var(--todo-bg);
   color: var(--muted);
 }
 
 .difficulty {
-  background: #eaf3ff;
-  color: #0b5cad;
+  background: var(--difficulty-bg);
+  color: var(--difficulty-ink);
 }
 
 .interviewShell {
@@ -476,7 +607,7 @@ h3 {
 
 .example {
   padding: 12px;
-  background: #f8fafc;
+  background: var(--soft-bg);
   border: 1px solid var(--line);
   border-radius: 7px;
   margin-bottom: 10px;
@@ -489,7 +620,7 @@ h3 {
 
 .constraints {
   padding-left: 20px;
-  color: #374151;
+  color: var(--ink);
   line-height: 1.7;
 }
 
@@ -510,7 +641,7 @@ h3 {
   gap: 12px;
   min-height: 48px;
   padding: 8px 14px;
-  background: #f8fafc;
+  background: var(--soft-bg);
   border-bottom: 1px solid var(--line);
 }
 
@@ -526,7 +657,7 @@ h3 {
 
 .syncPath {
   display: inline;
-  color: #243447;
+  color: var(--action-ink);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.83rem;
   overflow-wrap: anywhere;
@@ -574,13 +705,13 @@ h3 {
 .messageUser {
   align-self: flex-end;
   max-width: 88%;
-  background: #dff4ee;
+  background: var(--message-user-bg);
 }
 
 .messageAssistant {
   align-self: flex-start;
   max-width: 94%;
-  background: #f1f4f8;
+  background: var(--message-assistant-bg);
 }
 
 .chatInput {
@@ -595,6 +726,8 @@ h3 {
   resize: vertical;
   padding: 10px;
   border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
   border-radius: 7px;
 }
 
@@ -620,7 +753,7 @@ h3 {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fbfcfe;
+  background: var(--soft-2-bg);
 }
 
 .resultCasePassed {
@@ -645,7 +778,7 @@ h3 {
 
 .readiness {
   padding: 12px;
-  background: #f8fafc;
+  background: var(--soft-bg);
   border: 1px solid var(--line);
   border-radius: 7px;
 }
@@ -679,7 +812,7 @@ h3 {
 .weaknessCard {
   min-width: 0;
   padding: 12px;
-  background: #fbfcfe;
+  background: var(--soft-2-bg);
   border: 1px solid var(--line);
   border-radius: 7px;
 }
@@ -700,28 +833,28 @@ h3 {
   min-height: 28px;
   padding: 0 8px;
   border-radius: 6px;
-  background: #e8f4f0;
+  background: var(--score-bg);
   color: var(--ok);
   font-weight: 850;
 }
 
 .actionText {
   margin-bottom: 0;
-  color: #243447;
+  color: var(--action-ink);
   font-weight: 720;
 }
 
 .barMeter {
   height: 8px;
   overflow: hidden;
-  background: #e8edf2;
+  background: var(--bar-track);
   border-radius: 999px;
 }
 
 .barFill {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, #13795b, #b54535);
+  background: var(--bar-fill);
 }
 
 .empty {
@@ -739,8 +872,8 @@ h3 {
 .error {
   padding: 12px;
   color: var(--bad);
-  background: #fff0ee;
-  border: 1px solid #f0b9b2;
+  background: var(--error-bg);
+  border: 1px solid var(--error-line);
   border-radius: 7px;
 }
 

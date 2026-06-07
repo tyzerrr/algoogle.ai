@@ -1,4 +1,5 @@
 import type {
+  AIProvider,
   Attempt,
   ChatMessage,
   CodeFileResponse,
@@ -45,6 +46,7 @@ export const api = {
   createAttempt: (
     problemId: string,
     code?: string,
+    aiProvider: AIProvider = "codex",
     companyPreset: CompanyPreset = "google",
     interviewMode: InterviewMode = "real",
   ) =>
@@ -54,6 +56,7 @@ export const api = {
         problem_id: problemId,
         language: "python",
         code: code ?? "",
+        ai_provider: aiProvider,
         company_preset: companyPreset,
         interview_mode: interviewMode,
       }),
