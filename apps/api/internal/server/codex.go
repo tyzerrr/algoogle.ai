@@ -20,6 +20,8 @@ type CodexClient struct {
 	timeoutSeconds int
 }
 
+var codexHomeFiles = []string{"auth.json", "config.toml", "installation_id", "version.json", "models_cache.json"}
+
 func NewCodexClient(cfg Config) *CodexClient {
 	return &CodexClient{
 		path:           cfg.CodexCLIPath,
@@ -42,34 +44,26 @@ func (c *CodexClient) Generate(ctx context.Context, prompt string, schema *strin
 		return "", err
 	}
 	defer os.RemoveAll(dir)
+	codexHome, cleanupCodexHome, err := prepareCodexHome()
+	if err != nil {
+		return "", err
+	}
+	defer cleanupCodexHome()
 
 	outputPath := filepath.Join(dir, "last-message.txt")
-	args := []string{
-		"exec",
-		"--skip-git-repo-check",
-		"--ephemeral",
-		"--ask-for-approval", "never",
-		"--sandbox", "read-only",
-		"--color", "never",
-		"-C", c.workingDir,
-		"--output-last-message", outputPath,
-	}
-	if c.model != "" {
-		args = append(args, "--model", c.model)
-	}
+	schemaPath := ""
 	if schema != nil {
-		schemaPath := filepath.Join(dir, "schema.json")
+		schemaPath = filepath.Join(dir, "schema.json")
 		if err := os.WriteFile(schemaPath, []byte(*schema), 0600); err != nil {
 			return "", err
 		}
-		args = append(args, "--output-schema", schemaPath)
 	}
-	args = append(args, "-")
+	args := buildCodexExecArgs(c.workingDir, c.model, outputPath, schemaPath)
 
 	cmd := exec.CommandContext(runCtx, c.path, args...)
 	cmd.Stdin = strings.NewReader(prompt)
 	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "NO_COLOR=1")
+	cmd.Env = append(cmd.Env, "NO_COLOR=1", "CODEX_HOME="+codexHome)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -96,6 +90,72 @@ func (c *CodexClient) Generate(ctx context.Context, prompt string, schema *strin
 		return strings.TrimSpace(string(output)), nil
 	}
 	return strings.TrimSpace(stdout.String()), nil
+}
+
+func buildCodexExecArgs(workingDir, model, outputPath, schemaPath string) []string {
+	args := []string{
+		"--ask-for-approval", "never",
+		"exec",
+		"--skip-git-repo-check",
+		"--ephemeral",
+		"--sandbox", "read-only",
+		"--color", "never",
+		"-C", workingDir,
+		"--output-last-message", outputPath,
+	}
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+	if schemaPath != "" {
+		args = append(args, "--output-schema", schemaPath)
+	}
+	return append(args, "-")
+}
+
+func prepareCodexHome() (string, func(), error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", func() {}, err
+	}
+	base := filepath.Join(home, ".cache", "algoogle-codex")
+	sourceHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
+	if sourceHome == "" {
+		sourceHome = filepath.Join(home, ".codex")
+	}
+	return prepareCodexHomeFrom(sourceHome, base)
+}
+
+func prepareCodexHomeFrom(sourceHome, base string) (string, func(), error) {
+	if err := os.MkdirAll(base, 0700); err != nil {
+		return "", func() {}, err
+	}
+	codexHome, err := os.MkdirTemp(base, "home-*")
+	if err != nil {
+		return "", func() {}, err
+	}
+	cleanup := func() {
+		_ = os.RemoveAll(codexHome)
+	}
+	for _, name := range codexHomeFiles {
+		if err := copyCodexHomeFile(sourceHome, codexHome, name); err != nil {
+			cleanup()
+			return "", func() {}, err
+		}
+	}
+	return codexHome, cleanup, nil
+}
+
+func copyCodexHomeFile(sourceHome, targetHome, name string) error {
+	sourcePath := filepath.Join(sourceHome, name)
+	data, err := os.ReadFile(sourcePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	targetPath := filepath.Join(targetHome, name)
+	return os.WriteFile(targetPath, data, 0600)
 }
 
 func (c *CodexClient) Chat(ctx context.Context, problem Problem, attempt Attempt, messages []ChatMessage, userMessage string, englishMode bool, memory ProblemMemory) (string, error) {
