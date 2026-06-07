@@ -15,6 +15,7 @@ LeetCodeの解答暗記ではなく、AI面接官との会話を通じて、問�
 - AI providerをCodex CLI / Claude Code CLIからattemptごとに選択
 - Google / Meta / Amazon / Generic の面接プリセットを切り替え
 - Real Interview Modeで、ローカル実行なし・補完なし・方針説明必須の練習
+- WhiteBoardで疑似コード、Mermaid sequence diagram、データ構造、不変条件、状態遷移、計算量比較をAI面接官と議論
 - Light / Dark / Netflix の3テーマを切り替え
 - 30秒以上沈黙した場合、AI面接官が発話や不変条件の説明を促す
 - Monaco Editorとローカル `workspace/` のPythonファイルを双方向同期
@@ -90,6 +91,21 @@ nvim ./workspace/<problem-id>-<attempt-id>.py
 NeoVimで保存すると、アプリ上のMonaco Editorへ自動反映されます。アプリ側で編集した内容も同じファイルへ保存されます。
 
 `workspace/` は `.gitignore` 済みです。練習中のコードやメモがcommitされないようにしています。
+
+## WhiteBoard Discussion
+
+実際のcoding interviewで白板を使う場面を、PC上ではWhiteBoardとして再現します。
+
+問題詳細画面の `WhiteBoard` から、AI面接官に「今WhiteBoardを使うべきか」を判断させられます。AIは会話、コード、過去のミス、過去のWhiteBoardを見たうえで、次のいずれかを選びます。
+
+- `Pseudo`: 実装前の疑似コード
+- `Mermaid`: `sequenceDiagram` による操作順序や面接官との確認フロー
+- `Data`: データ構造、保持する値、操作コスト
+- `Invariant`: 初期化、維持、終了条件
+- `State`: 状態遷移と不正遷移
+- `Cost`: 複数解法の時間・空間・trade-off比較
+
+WhiteBoardはattemptごとにSQLiteへ保存されます。次回同じ問題を解くとき、AI面接官は過去のWhiteBoardと間違え方を参照し、同じ説明の繰り返しではなく、より厳しいフォローアップや新しい白板課題を出します。
 
 ## Real Interview Mode
 
@@ -191,6 +207,7 @@ GitHub Actionsでは、Go APIのテスト、Next.jsの型チェック/ビルド�
 - Google / Meta / Amazon風のReal Interview Modeで練習する
 - ローカルテストケースを実行する
 - Codex CLIまたはClaude Code CLI経由のAI面接官と会話する
+- WhiteBoardで疑似コード、Mermaid、データ構造、不変条件、状態遷移、計算量比較を保存しながら議論する
 - Codex CLIまたはClaude Code CLI経由のAIレビューをJSON構造で保存する
 - Light / Dark / Netflix modeを切り替える
 - scorecard、採用判定、フォローアップ質問、過去のミス、弱点signalをSQLiteに保存し、次回の面接官プロンプトへ反映する
