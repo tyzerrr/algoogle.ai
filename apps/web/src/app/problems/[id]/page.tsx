@@ -20,6 +20,7 @@ import CodeEditor from "@/components/CodeEditor";
 import ProblemStatement from "@/components/ProblemStatement";
 import ReviewPanel from "@/components/ReviewPanel";
 import TestResultPanel from "@/components/TestResultPanel";
+import WhiteboardPanel from "@/components/WhiteboardPanel";
 import { api } from "@/lib/api";
 import type {
   AIProvider,
@@ -31,6 +32,9 @@ import type {
   Problem,
   ReviewResponse,
   RunResult,
+  WhiteboardArtifact,
+  WhiteboardRequest,
+  WhiteboardSuggestion,
 } from "@/lib/types";
 
 const AI_PROVIDER_OPTIONS: { id: AIProvider; label: string; note: string }[] = [
@@ -79,6 +83,9 @@ export default function ProblemDetailPage() {
   const [runResult, setRunResult] = useState<RunResult | undefined>();
   const [review, setReview] = useState<ReviewResponse | undefined>();
   const [codeFile, setCodeFile] = useState<CodeFileResponse | null>(null);
+  const [whiteboards, setWhiteboards] = useState<WhiteboardArtifact[]>([]);
+  const [activeWhiteboardId, setActiveWhiteboardId] = useState<string | null>(null);
+  const [whiteboardSuggestion, setWhiteboardSuggestion] = useState<WhiteboardSuggestion | null>(null);
   const [syncStatus, setSyncStatus] = useState("同期準備中");
   const [aiProvider, setAIProvider] = useState<AIProvider>("codex");
   const [companyPreset, setCompanyPreset] = useState<CompanyPreset>("google");
@@ -86,7 +93,7 @@ export default function ProblemDetailPage() {
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [lastActivityAt, setLastActivityAt] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<"chat" | "run" | "review" | "reset" | null>(null);
+  const [busy, setBusy] = useState<"chat" | "run" | "review" | "reset" | "whiteboard" | null>(null);
   const [error, setError] = useState("");
   const codeRef = useRef("");
   const suppressSaveRef = useRef(false);
@@ -127,6 +134,11 @@ export default function ProblemDetailPage() {
         const file = await api.codeFile(nextAttempt.id);
         if (cancelled) return;
         applyCodeFile(file, "NeoVim同期が有効です");
+        const nextWhiteboards = await api.whiteboards(nextAttempt.id);
+        if (cancelled) return;
+        setWhiteboards(nextWhiteboards);
+        setActiveWhiteboardId(nextWhiteboards[0]?.id ?? null);
+        setWhiteboardSuggestion(null);
         setMessages(await api.messages(nextAttempt.id));
       } catch (err) {
         if (!cancelled) setError((err as Error).message);
@@ -301,6 +313,10 @@ export default function ProblemDetailPage() {
       markActivity();
       const file = await api.codeFile(nextAttempt.id);
       applyCodeFile(file, "新しいattemptを同期");
+      const nextWhiteboards = await api.whiteboards(nextAttempt.id);
+      setWhiteboards(nextWhiteboards);
+      setActiveWhiteboardId(nextWhiteboards[0]?.id ?? null);
+      setWhiteboardSuggestion(null);
       setMessages(await api.messages(nextAttempt.id));
     } catch (err) {
       setError((err as Error).message);
@@ -381,6 +397,103 @@ export default function ProblemDetailPage() {
       const reply = await api.sendMessage(attempt.id, message, englishMode);
       const storedMessages = await api.messages(attempt.id);
       setMessages(storedMessages.length ? storedMessages : (current) => current.concat(reply));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function upsertWhiteboard(item: WhiteboardArtifact) {
+    setWhiteboards((current) => {
+      const next = [item].concat(current.filter((whiteboard) => whiteboard.id !== item.id));
+      return next.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    });
+    setActiveWhiteboardId(item.id);
+  }
+
+  async function createWhiteboard(payload: WhiteboardRequest) {
+    if (!attempt) return;
+    markActivity();
+    setBusy("whiteboard");
+    setError("");
+    try {
+      const created = await api.createWhiteboard(attempt.id, payload);
+      upsertWhiteboard(created);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function updateWhiteboard(whiteboardId: string, payload: WhiteboardRequest) {
+    if (!attempt) return;
+    markActivity();
+    setBusy("whiteboard");
+    setError("");
+    try {
+      const updated = await api.updateWhiteboard(attempt.id, whiteboardId, payload);
+      upsertWhiteboard(updated);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function suggestWhiteboard(message: string) {
+    if (!attempt) return;
+    markActivity();
+    setBusy("whiteboard");
+    setError("");
+    try {
+      await saveCodeNow();
+      const response = await api.suggestWhiteboard(attempt.id, message);
+      setWhiteboardSuggestion(response.suggestion);
+      if (response.whiteboard) upsertWhiteboard(response.whiteboard);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function whiteboardDiscussionMessage(
+    whiteboard: WhiteboardArtifact,
+    candidateMessage: string,
+  ) {
+    const intro =
+      candidateMessage.trim() ||
+      `WhiteBoard「${whiteboard.topic}」を使って議論したいです。面接官として、次に詰めるべき点を質問してください。`;
+    return [
+      intro,
+      "",
+      "[WhiteBoard]",
+      `kind: ${whiteboard.kind}`,
+      `topic: ${whiteboard.topic}`,
+      `prompt: ${whiteboard.prompt}`,
+      "content:",
+      whiteboard.content,
+    ].join("\n");
+  }
+
+  async function discussWhiteboard(
+    whiteboard: WhiteboardArtifact | null,
+    payload: WhiteboardRequest,
+    message: string,
+  ) {
+    if (!attempt) return;
+    markActivity();
+    setBusy("whiteboard");
+    setError("");
+    try {
+      await saveCodeNow();
+      const saved = whiteboard
+        ? await api.updateWhiteboard(attempt.id, whiteboard.id, payload)
+        : await api.createWhiteboard(attempt.id, payload);
+      upsertWhiteboard(saved);
+      await sendMessage(whiteboardDiscussionMessage(saved, message), false);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -596,6 +709,19 @@ export default function ProblemDetailPage() {
             </div>
           </div>
           <CodeEditor value={code} onChange={handleCodeChange} noAutocomplete={Boolean(attempt?.no_autocomplete)} />
+
+          <WhiteboardPanel
+            whiteboards={whiteboards}
+            activeId={activeWhiteboardId}
+            loading={busy === "whiteboard"}
+            disabled={!attempt}
+            suggestion={whiteboardSuggestion}
+            onSelect={setActiveWhiteboardId}
+            onCreate={createWhiteboard}
+            onUpdate={updateWhiteboard}
+            onSuggest={suggestWhiteboard}
+            onDiscuss={discussWhiteboard}
+          />
 
           <div className="paneHeader">
             <h2>テスト結果</h2>

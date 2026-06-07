@@ -634,6 +634,202 @@ h3 {
   background: var(--code);
 }
 
+.whiteboardPanel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.whiteboardHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.whiteboardHeader h2,
+.whiteboardHeader .eyebrow {
+  margin-bottom: 0;
+}
+
+.whiteboardTabs {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.whiteboardTab,
+.whiteboardMode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.whiteboardTab {
+  flex: 0 0 auto;
+  max-width: 220px;
+  padding: 0 9px;
+}
+
+.whiteboardTab span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.whiteboardTabActive,
+.whiteboardModeActive {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--phase-active-bg);
+}
+
+.whiteboardEmpty {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  color: var(--muted);
+  background: var(--soft-bg);
+  border: 1px dashed var(--line);
+  border-radius: 7px;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.whiteboardModes {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.whiteboardMode {
+  justify-content: center;
+  min-width: 0;
+  padding: 0 6px;
+}
+
+.whiteboardReason {
+  padding: 10px 11px;
+  color: var(--action-ink);
+  background: var(--soft-bg);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  line-height: 1.55;
+}
+
+.whiteboardMetaGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.whiteboardMetaGrid label,
+.whiteboardPrompt,
+.whiteboardEditor {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.whiteboardMetaGrid span,
+.whiteboardPrompt span,
+.whiteboardEditor span,
+.whiteboardPreviewTitle {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.whiteboardMetaGrid input,
+.whiteboardPrompt textarea,
+.whiteboardEditor textarea,
+.whiteboardDiscuss textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.whiteboardMetaGrid input {
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.whiteboardPrompt textarea {
+  min-height: 70px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.whiteboardEditorGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.95fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.whiteboardEditor textarea {
+  min-height: 260px;
+  padding: 10px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.5;
+}
+
+.whiteboardPreview {
+  min-width: 0;
+  min-height: 260px;
+  overflow: auto;
+  padding: 10px;
+  background: var(--soft-2-bg);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.whiteboardPreview pre {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.55;
+}
+
+.mermaidCanvas {
+  min-width: 420px;
+  padding-top: 8px;
+}
+
+.mermaidCanvas svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.whiteboardDiscuss {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.whiteboardDiscuss textarea {
+  min-height: 48px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
 .syncStrip {
   display: flex;
   align-items: center;
@@ -879,6 +1075,8 @@ h3 {
 
 @media (max-width: 980px) {
   .dailyLayout,
+  .whiteboardEditorGrid,
+  .whiteboardMetaGrid,
   .interviewControl,
   .interviewShell {
     grid-template-columns: 1fr;
@@ -923,7 +1121,14 @@ h3 {
   }
 
   .segmented,
+  .whiteboardModes,
   .phaseRail {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .whiteboardHeader,
+  .whiteboardDiscuss {
+    align-items: stretch;
+    grid-template-columns: 1fr;
   }
 }

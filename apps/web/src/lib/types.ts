@@ -10,6 +10,13 @@ export type CompanyPreset = "google" | "meta" | "amazon" | "generic";
 export type InterviewMode = "real" | "practice";
 export type AIProvider = "codex" | "claude";
 export type ThemeMode = "light" | "dark" | "netflix";
+export type WhiteboardKind =
+  | "pseudocode"
+  | "mermaid_sequence"
+  | "data_structure"
+  | "invariants"
+  | "state_transition"
+  | "complexity_table";
 
 export type ProblemListItem = {
   id: string;
@@ -213,4 +220,38 @@ export type CodeFileResponse = {
   content: string;
   updated_at: string;
   size: number;
+};
+
+export type WhiteboardArtifact = {
+  id: string;
+  attempt_id: string;
+  problem_id: string;
+  kind: WhiteboardKind;
+  topic: string;
+  prompt: string;
+  content: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WhiteboardRequest = {
+  kind: WhiteboardKind;
+  topic: string;
+  prompt: string;
+  content: string;
+};
+
+export type WhiteboardSuggestion = {
+  use_whiteboard: boolean;
+  kind: WhiteboardKind | "";
+  topic: string;
+  prompt: string;
+  starter_content: string;
+  reason: string;
+};
+
+export type WhiteboardSuggestionResponse = {
+  suggestion: WhiteboardSuggestion;
+  whiteboard?: WhiteboardArtifact;
 };
