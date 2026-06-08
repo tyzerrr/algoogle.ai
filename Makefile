@@ -47,12 +47,12 @@ health:
 test: test-api test-web
 
 test-api:
-	cd apps/api && go test ./...
+	cd apps/api && CGO_ENABLED=0 go test ./...
 
 test-web:
-	cd apps/web && corepack pnpm install --frozen-lockfile
+	cd apps/web && NODE_OPTIONS=--no-deprecation corepack pnpm install --frozen-lockfile
 	cd apps/web && corepack pnpm typecheck
-	cd apps/web && corepack pnpm build
+	cd apps/web && NEXT_TELEMETRY_DISABLED=1 corepack pnpm build
 
 clean:
 	$(COMPOSE) down -v
