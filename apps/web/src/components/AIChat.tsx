@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Loader2, Send, Languages } from "lucide-react";
 import type { ChatMessage } from "@/lib/types";
 
@@ -20,17 +20,33 @@ export default function AIChat({
   const [message, setMessage] = useState("");
   const [englishMode, setEnglishMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const sendingRef = useRef(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length, loading]);
 
+  async function sendCurrentMessage() {
+    const trimmed = message.trim();
+    if (!trimmed || disabled || loading || sendingRef.current) return;
+    sendingRef.current = true;
+    setMessage("");
+    try {
+      await onSend(trimmed, englishMode);
+    } finally {
+      sendingRef.current = false;
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const trimmed = message.trim();
-    if (!trimmed) return;
-    setMessage("");
-    await onSend(trimmed, englishMode);
+    await sendCurrentMessage();
+  }
+
+  function handlePromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || !event.shiftKey || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    void sendCurrentMessage();
   }
 
   return (
@@ -78,6 +94,7 @@ export default function AIChat({
         <textarea
           value={message}
           onChange={(event) => setMessage(event.target.value)}
+          onKeyDown={handlePromptKeyDown}
           placeholder="考え方、詰まっている点、計算量の説明を書いてください"
           disabled={disabled || loading}
         />
