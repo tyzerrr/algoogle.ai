@@ -94,6 +94,7 @@ export default function ProblemDetailPage() {
   const [lastActivityAt, setLastActivityAt] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"chat" | "run" | "review" | "reset" | "whiteboard" | null>(null);
+  const [chatLoadingLabel, setChatLoadingLabel] = useState("");
   const [error, setError] = useState("");
   const codeRef = useRef("");
   const suppressSaveRef = useRef(false);
@@ -155,6 +156,7 @@ export default function ProblemDetailPage() {
 
   const canAct = useMemo(() => Boolean(problem && attempt && !busy), [problem, attempt, busy]);
   const activePhase = review ? "Follow-up" : runResult ? "Dry run" : phaseLabel(attempt?.current_phase);
+  const currentAIProviderLabel = AI_PROVIDER_OPTIONS.find((option) => option.id === aiProvider)?.label ?? "AI面接官";
 
   function markActivity() {
     setLastActivityAt(Date.now());
@@ -391,9 +393,11 @@ export default function ProblemDetailPage() {
     };
     setMessages((current) => current.concat(optimistic));
     setBusy("chat");
+    setChatLoadingLabel(`${currentAIProviderLabel}へ送信しています`);
     setError("");
     try {
       await saveCodeNow();
+      setChatLoadingLabel(`${currentAIProviderLabel}が考えています`);
       const reply = await api.sendMessage(attempt.id, message, englishMode);
       const storedMessages = await api.messages(attempt.id);
       setMessages(storedMessages.length ? storedMessages : (current) => current.concat(reply));
@@ -401,6 +405,7 @@ export default function ProblemDetailPage() {
       setError((err as Error).message);
     } finally {
       setBusy(null);
+      setChatLoadingLabel("");
     }
   }
 
@@ -660,6 +665,7 @@ export default function ProblemDetailPage() {
             <AIChat
               messages={messages}
               loading={busy === "chat"}
+              loadingLabel={chatLoadingLabel}
               disabled={!attempt}
               onSend={sendMessage}
             />

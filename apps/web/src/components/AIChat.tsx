@@ -1,22 +1,29 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { Send, Languages } from "lucide-react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { Loader2, Send, Languages } from "lucide-react";
 import type { ChatMessage } from "@/lib/types";
 
 export default function AIChat({
   messages,
   loading,
+  loadingLabel,
   disabled,
   onSend,
 }: {
   messages: ChatMessage[];
   loading: boolean;
+  loadingLabel?: string;
   disabled: boolean;
   onSend: (message: string, englishMode: boolean) => Promise<void>;
 }) {
   const [message, setMessage] = useState("");
   const [englishMode, setEnglishMode] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ block: "end" });
+  }, [messages.length, loading]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -43,6 +50,18 @@ export default function AIChat({
             </div>
           ))
         )}
+        {loading ? (
+          <div className="message messageAssistant messageThinking" role="status" aria-live="polite">
+            <Loader2 className="spin" size={16} />
+            <span>{loadingLabel || "AI面接官が考えています"}</span>
+            <span className="thinkingPulse" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+          </div>
+        ) : null}
+        <div ref={messagesEndRef} />
       </div>
 
       <label className="toggle">
