@@ -47,6 +47,15 @@ type Example struct {
 	Explanation string `json:"explanation,omitempty"`
 }
 
+type OfficialProblemContent struct {
+	Source    string    `json:"source"`
+	SourceURL string    `json:"source_url"`
+	Title     string    `json:"title"`
+	Statement string    `json:"statement"`
+	Examples  []Example `json:"examples"`
+	FetchedAt string    `json:"fetched_at"`
+}
+
 type TestCase struct {
 	Name     string                 `json:"name"`
 	Input    map[string]interface{} `json:"input"`

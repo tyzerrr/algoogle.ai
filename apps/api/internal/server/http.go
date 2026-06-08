@@ -12,12 +12,13 @@ import (
 )
 
 type App struct {
-	cfg       Config
-	store     *Store
-	runner    *CodeRunner
-	ai        *AIService
-	codeFiles *CodeFileManager
-	router    http.Handler
+	cfg           Config
+	store         *Store
+	runner        *CodeRunner
+	ai            *AIService
+	codeFiles     *CodeFileManager
+	sourceFetcher ProblemSourceProvider
+	router        http.Handler
 }
 
 func New(cfg Config) (*App, error) {
@@ -34,11 +35,12 @@ func New(cfg Config) (*App, error) {
 	}
 
 	app := &App{
-		cfg:       cfg,
-		store:     store,
-		runner:    NewCodeRunner(cfg.PythonBin),
-		ai:        NewAIService(cfg),
-		codeFiles: NewCodeFileManager(cfg.CodeWorkspaceDir, cfg.CodeWorkspacePublic),
+		cfg:           cfg,
+		store:         store,
+		runner:        NewCodeRunner(cfg.PythonBin),
+		ai:            NewAIService(cfg),
+		codeFiles:     NewCodeFileManager(cfg.CodeWorkspaceDir, cfg.CodeWorkspacePublic),
+		sourceFetcher: NewProblemSourceFetcher(),
 	}
 	app.router = app.routes()
 	return app, nil
@@ -61,6 +63,7 @@ func (a *App) routes() http.Handler {
 	r.Get("/health", a.health)
 	r.Get("/problems", a.listProblems)
 	r.Get("/problems/{problemID}", a.getProblem)
+	r.Get("/problems/{problemID}/official", a.getOfficialProblem)
 	r.Post("/attempts", a.createAttempt)
 	r.Get("/attempts/{attemptID}", a.getAttempt)
 	r.Get("/problems/{problemID}/attempts", a.listAttemptsForProblem)
@@ -92,6 +95,16 @@ func (a *App) listProblems(w http.ResponseWriter, _ *http.Request) {
 func (a *App) getProblem(w http.ResponseWriter, r *http.Request) {
 	problem, err := a.store.GetProblem(chi.URLParam(r, "problemID"))
 	respond(w, problem, err)
+}
+
+func (a *App) getOfficialProblem(w http.ResponseWriter, r *http.Request) {
+	problem, err := a.store.GetProblem(chi.URLParam(r, "problemID"))
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	content, err := a.sourceFetcher.Fetch(r.Context(), *problem)
+	respond(w, content, err)
 }
 
 func (a *App) createAttempt(w http.ResponseWriter, r *http.Request) {
