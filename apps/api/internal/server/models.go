@@ -48,12 +48,18 @@ type Example struct {
 }
 
 type OfficialProblemContent struct {
-	Source    string    `json:"source"`
-	SourceURL string    `json:"source_url"`
-	Title     string    `json:"title"`
-	Statement string    `json:"statement"`
-	Examples  []Example `json:"examples"`
-	FetchedAt string    `json:"fetched_at"`
+	Source    string         `json:"source"`
+	SourceURL string         `json:"source_url"`
+	Title     string         `json:"title"`
+	Statement string         `json:"statement"`
+	Examples  []Example      `json:"examples"`
+	Images    []ProblemImage `json:"images"`
+	FetchedAt string         `json:"fetched_at"`
+}
+
+type ProblemImage struct {
+	URL string `json:"url"`
+	Alt string `json:"alt,omitempty"`
 }
 
 type TestCase struct {

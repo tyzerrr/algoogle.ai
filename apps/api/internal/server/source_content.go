@@ -140,6 +140,7 @@ func parseLeetCodeProblemContent(title, sourceURL, contentHTML string) OfficialP
 	withoutConstraints := cutBeforeConstraints(contentHTML)
 	statementHTML := contentBeforeFirstExample(withoutConstraints)
 	examples := parseLeetCodeExamples(withoutConstraints)
+	images := parseLeetCodeImages(withoutConstraints, sourceURL)
 
 	return OfficialProblemContent{
 		Source:    "LeetCode",
@@ -147,6 +148,7 @@ func parseLeetCodeProblemContent(title, sourceURL, contentHTML string) OfficialP
 		Title:     title,
 		Statement: htmlToPlainText(statementHTML),
 		Examples:  examples,
+		Images:    images,
 		FetchedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 }
@@ -155,6 +157,8 @@ var (
 	constraintsHeadingPattern = regexp.MustCompile(`(?is)<strong[^>]*>\s*Constraints\s*:?\s*</strong>`)
 	exampleHeadingPattern     = regexp.MustCompile(`(?is)<strong[^>]*>\s*Example\s+\d+\s*:?\s*</strong>`)
 	exampleBlockPattern       = regexp.MustCompile(`(?is)<strong[^>]*>\s*Example\s+(\d+)\s*:?\s*</strong>.*?<pre[^>]*>(.*?)</pre>`)
+	imageTagPattern           = regexp.MustCompile(`(?is)<img\b[^>]*>`)
+	attributePattern          = regexp.MustCompile(`(?is)([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))`)
 	tagPattern                = regexp.MustCompile(`(?is)<[^>]+>`)
 	spacePattern              = regexp.MustCompile(`[ \t\r\f\v]+`)
 	blankLinePattern          = regexp.MustCompile(`\n{3,}`)
@@ -190,6 +194,70 @@ func parseLeetCodeExamples(contentHTML string) []Example {
 		examples = append(examples, example)
 	}
 	return examples
+}
+
+func parseLeetCodeImages(contentHTML, sourceURL string) []ProblemImage {
+	tags := imageTagPattern.FindAllString(contentHTML, -1)
+	images := make([]ProblemImage, 0, len(tags))
+	seen := map[string]bool{}
+	for _, tag := range tags {
+		attributes := parseHTMLAttributes(tag)
+		rawURL := attributes["src"]
+		if rawURL == "" {
+			continue
+		}
+		imageURL := normalizeImageURL(rawURL, sourceURL)
+		if imageURL == "" || seen[imageURL] {
+			continue
+		}
+		seen[imageURL] = true
+		images = append(images, ProblemImage{
+			URL: imageURL,
+			Alt: strings.TrimSpace(attributes["alt"]),
+		})
+	}
+	return images
+}
+
+func parseHTMLAttributes(tag string) map[string]string {
+	attributes := map[string]string{}
+	for _, match := range attributePattern.FindAllStringSubmatch(tag, -1) {
+		if len(match) < 6 {
+			continue
+		}
+		value := match[3]
+		if value == "" {
+			value = match[4]
+		}
+		if value == "" {
+			value = match[5]
+		}
+		attributes[strings.ToLower(match[1])] = strings.TrimSpace(html.UnescapeString(value))
+	}
+	return attributes
+}
+
+func normalizeImageURL(rawURL, sourceURL string) string {
+	rawURL = strings.TrimSpace(html.UnescapeString(rawURL))
+	if rawURL == "" || strings.HasPrefix(rawURL, "data:") {
+		return ""
+	}
+	base, err := url.Parse(sourceURL)
+	if err != nil {
+		return ""
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	resolved := base.ResolveReference(parsed)
+	if resolved.Scheme == "" && strings.HasPrefix(rawURL, "//") {
+		resolved.Scheme = "https"
+	}
+	if resolved.Scheme != "http" && resolved.Scheme != "https" {
+		return ""
+	}
+	return resolved.String()
 }
 
 func parseExamplePre(preHTML string) Example {

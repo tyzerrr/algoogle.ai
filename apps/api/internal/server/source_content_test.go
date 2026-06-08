@@ -18,6 +18,7 @@ func TestLeetCodeSlug(t *testing.T) {
 
 func TestParseLeetCodeProblemContentKeepsStatementAndExamplesOnly(t *testing.T) {
 	content := `<p>Given an array of integers <code>nums</code>&nbsp;and an integer <code>target</code>, return indices.</p>
+<p><img alt="Two Sum diagram" src="/uploads/two-sum.png" /></p>
 <p>You may assume exactly one solution.</p>
 <p>&nbsp;</p>
 <p><strong class="example">Example 1:</strong></p>
@@ -56,5 +57,28 @@ func TestParseLeetCodeProblemContentKeepsStatementAndExamplesOnly(t *testing.T) 
 	}
 	if parsed.Examples[1].Input != "nums = [3,2,4], target = 6" || parsed.Examples[1].Output != "[1,2]" {
 		t.Fatalf("unexpected second example: %#v", parsed.Examples[1])
+	}
+	if len(parsed.Images) != 1 {
+		t.Fatalf("expected one image, got %#v", parsed.Images)
+	}
+	if parsed.Images[0].URL != "https://leetcode.com/uploads/two-sum.png" || parsed.Images[0].Alt != "Two Sum diagram" {
+		t.Fatalf("unexpected image: %#v", parsed.Images[0])
+	}
+}
+
+func TestParseLeetCodeImagesDeduplicatesAndIgnoresDataURLs(t *testing.T) {
+	content := `<p>
+<img src="//assets.leetcode.com/uploads/tree.jpg" alt="Tree">
+<img src="//assets.leetcode.com/uploads/tree.jpg" alt="Duplicate">
+<img src="data:image/png;base64,abc" alt="inline">
+</p>`
+
+	images := parseLeetCodeImages(content, "https://leetcode.com/problems/maximum-depth-of-binary-tree/")
+
+	if len(images) != 1 {
+		t.Fatalf("expected one image, got %#v", images)
+	}
+	if images[0].URL != "https://assets.leetcode.com/uploads/tree.jpg" || images[0].Alt != "Tree" {
+		t.Fatalf("unexpected image: %#v", images[0])
 	}
 }
