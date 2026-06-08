@@ -1,3 +1,4 @@
+import { ExternalLink } from "lucide-react";
 import type { OfficialProblemContent, Problem } from "@/lib/types";
 
 export default function ProblemStatement({
@@ -28,9 +29,16 @@ export default function ProblemStatement({
       {officialError ? <p className="muted">本家問題文を取得できないため、Arai60要約を表示しています。</p> : null}
       <p className="statementText">{statement}</p>
       {problem.source_url ? (
-        <p>
-          <a href={problem.source_url} target="_blank" rel="noreferrer">
+        <p className="sourceLinkRow">
+          <a
+            className="sourceLink"
+            href={problem.source_url}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="LeetCodeの公式問題を新しいタブで開く"
+          >
             公式問題を開く
+            <ExternalLink size={16} />
           </a>
         </p>
       ) : null}

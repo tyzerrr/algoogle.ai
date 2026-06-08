@@ -609,6 +609,28 @@ h3 {
   white-space: pre-line;
 }
 
+.sourceLinkRow {
+  margin: 14px 0 18px;
+}
+
+.sourceLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 48%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+  color: var(--primary);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.sourceLink:hover {
+  transform: translateY(-1px);
+}
+
 .example {
   padding: 12px;
   background: var(--soft-bg);
