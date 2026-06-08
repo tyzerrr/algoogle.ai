@@ -29,6 +29,7 @@ import type {
   CodeFileResponse,
   CompanyPreset,
   InterviewMode,
+  OfficialProblemContent,
   Problem,
   ReviewResponse,
   RunResult,
@@ -77,6 +78,9 @@ export default function ProblemDetailPage() {
   const params = useParams<{ id: string }>();
   const problemId = params.id;
   const [problem, setProblem] = useState<Problem | null>(null);
+  const [officialContent, setOfficialContent] = useState<OfficialProblemContent | null>(null);
+  const [officialLoading, setOfficialLoading] = useState(false);
+  const [officialError, setOfficialError] = useState("");
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [code, setCode] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -117,6 +121,20 @@ export default function ProblemDetailPage() {
         const nextProblem = await api.problem(problemId);
         if (cancelled) return;
         setProblem(nextProblem);
+        setOfficialContent(null);
+        setOfficialError("");
+        setOfficialLoading(true);
+        api
+          .officialProblem(problemId)
+          .then((content) => {
+            if (!cancelled) setOfficialContent(content);
+          })
+          .catch((err: Error) => {
+            if (!cancelled) setOfficialError(err.message);
+          })
+          .finally(() => {
+            if (!cancelled) setOfficialLoading(false);
+          });
         setCode(nextProblem.starter_code);
         const nextAttempt = await api.createAttempt(
           problemId,
@@ -652,7 +670,12 @@ export default function ProblemDetailPage() {
             <h2>問題</h2>
           </div>
           <div className="paneBody">
-            <ProblemStatement problem={problem} />
+            <ProblemStatement
+              problem={problem}
+              officialContent={officialContent}
+              officialLoading={officialLoading}
+              officialError={officialError}
+            />
           </div>
 
           <div className="paneHeader">

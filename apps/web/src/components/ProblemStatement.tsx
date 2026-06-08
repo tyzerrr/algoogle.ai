@@ -1,6 +1,20 @@
-import type { Problem } from "@/lib/types";
+import type { OfficialProblemContent, Problem } from "@/lib/types";
 
-export default function ProblemStatement({ problem }: { problem: Problem }) {
+export default function ProblemStatement({
+  problem,
+  officialContent,
+  officialLoading,
+  officialError,
+}: {
+  problem: Problem;
+  officialContent?: OfficialProblemContent | null;
+  officialLoading?: boolean;
+  officialError?: string;
+}) {
+  const statement = officialContent?.statement || problem.statement;
+  const examples = officialContent?.examples.length ? officialContent.examples : problem.examples;
+  const sourceLabel = officialContent ? `${officialContent.source}本文` : "Arai60要約";
+
   return (
     <div className="statement">
       <div className="resultMeta">
@@ -8,8 +22,11 @@ export default function ProblemStatement({ problem }: { problem: Problem }) {
         <span className="difficulty">{problem.difficulty}</span>
         <span className="tag">{problem.pattern}</span>
         {problem.list_name ? <span className="tag">{problem.list_name}</span> : null}
+        <span className="tag">{sourceLabel}</span>
       </div>
-      <p>{problem.statement}</p>
+      {officialLoading ? <p className="muted">本家問題文を取得中...</p> : null}
+      {officialError ? <p className="muted">本家問題文を取得できないため、Arai60要約を表示しています。</p> : null}
+      <p className="statementText">{statement}</p>
       {problem.source_url ? (
         <p>
           <a href={problem.source_url} target="_blank" rel="noreferrer">
@@ -19,7 +36,7 @@ export default function ProblemStatement({ problem }: { problem: Problem }) {
       ) : null}
 
       <h3>例</h3>
-      {problem.examples.map((example, index) => (
+      {examples.map((example, index) => (
         <div className="example" key={`${example.input}-${index}`}>
           <p>
             <strong>Input:</strong> <code>{example.input}</code>
@@ -30,13 +47,6 @@ export default function ProblemStatement({ problem }: { problem: Problem }) {
           {example.explanation ? <p className="muted">{example.explanation}</p> : null}
         </div>
       ))}
-
-      <h3>制約</h3>
-      <ul className="constraints">
-        {problem.constraints.map((constraint) => (
-          <li key={constraint}>{constraint}</li>
-        ))}
-      </ul>
     </div>
   );
 }

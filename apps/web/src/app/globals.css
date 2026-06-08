@@ -605,6 +605,10 @@ h3 {
   line-height: 1.7;
 }
 
+.statementText {
+  white-space: pre-line;
+}
+
 .example {
   padding: 12px;
   background: var(--soft-bg);
@@ -616,6 +620,8 @@ h3 {
 .example code,
 .resultValue {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .constraints {

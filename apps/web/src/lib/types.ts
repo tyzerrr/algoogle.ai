@@ -60,6 +60,15 @@ export type Problem = ProblemListItem & {
   created_at: string;
 };
 
+export type OfficialProblemContent = {
+  source: string;
+  source_url: string;
+  title: string;
+  statement: string;
+  examples: Example[];
+  fetched_at: string;
+};
+
 export type TestCaseResult = {
   name: string;
   passed: boolean;

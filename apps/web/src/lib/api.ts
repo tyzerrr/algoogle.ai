@@ -6,6 +6,7 @@ import type {
   CompanyPreset,
   DailyResponse,
   InterviewMode,
+  OfficialProblemContent,
   Problem,
   ProblemListItem,
   ReviewDashboard,
@@ -46,6 +47,7 @@ export const api = {
   daily: () => apiFetch<DailyResponse>("/daily"),
   problems: () => apiFetch<ProblemListItem[]>("/problems"),
   problem: (id: string) => apiFetch<Problem>(`/problems/${id}`),
+  officialProblem: (id: string) => apiFetch<OfficialProblemContent>(`/problems/${id}/official`),
   createAttempt: (
     problemId: string,
     code?: string,
