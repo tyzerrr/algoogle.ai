@@ -81,6 +81,7 @@ export default function ProblemDetailPage() {
   const [officialContent, setOfficialContent] = useState<OfficialProblemContent | null>(null);
   const [officialLoading, setOfficialLoading] = useState(false);
   const [officialError, setOfficialError] = useState("");
+  const [problemLanguage, setProblemLanguage] = useState<"ja" | "en">("ja");
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [code, setCode] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -123,6 +124,7 @@ export default function ProblemDetailPage() {
         setProblem(nextProblem);
         setOfficialContent(null);
         setOfficialError("");
+        setProblemLanguage("ja");
         setOfficialLoading(true);
         api
           .officialProblem(problemId)
@@ -675,6 +677,8 @@ export default function ProblemDetailPage() {
               officialContent={officialContent}
               officialLoading={officialLoading}
               officialError={officialError}
+              language={problemLanguage}
+              onLanguageChange={setProblemLanguage}
             />
           </div>
 

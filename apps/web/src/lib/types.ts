@@ -66,7 +66,13 @@ export type OfficialProblemContent = {
   title: string;
   statement: string;
   examples: Example[];
+  images: ProblemImage[];
   fetched_at: string;
+};
+
+export type ProblemImage = {
+  url: string;
+  alt?: string;
 };
 
 export type TestCaseResult = {
