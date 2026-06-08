@@ -44,7 +44,7 @@ export default function AIChat({
   }
 
   function handlePromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== "Enter" || !event.shiftKey || event.nativeEvent.isComposing) return;
+    if (event.key !== "Enter" || !event.metaKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
     void sendCurrentMessage();
   }
