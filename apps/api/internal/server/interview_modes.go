@@ -18,7 +18,7 @@ func defaultsForInterview(companyPreset, interviewMode string) interviewDefaults
 	defaults := interviewDefaults{
 		CompanyPreset:    companyPreset,
 		InterviewMode:    interviewMode,
-		CurrentPhase:     "planning",
+		CurrentPhase:     "clarify",
 		TimeLimitSeconds: 2700,
 		NoRun:            true,
 		NoAutocomplete:   true,

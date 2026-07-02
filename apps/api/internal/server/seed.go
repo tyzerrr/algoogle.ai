@@ -94,9 +94,10 @@ func generatedAraiProblem(meta araiProblem) Problem {
 	return Problem{
 		ID:         meta.ID,
 		Title:      meta.Title,
-		Difficulty: meta.Difficulty,
-		Pattern:    meta.Pattern,
-		Tags:       meta.Tags,
+		Difficulty:             meta.Difficulty,
+		Pattern:                meta.Pattern,
+		Tags:                   meta.Tags,
+		StatementIsPlaceholder: true,
 		Statement: fmt.Sprintf(
 			"Arai60収録の「%s」です。公式問題の入出力仕様を確認し、まず全探索、次に面接で説明できる最適化方針、エッジケース、計算量を言語化してから実装してください。LeetCode本文の丸写しではなく、このアプリでは面接練習用カードとして扱います。",
 			meta.Title,

@@ -143,18 +143,49 @@ func parseLeetCodeProblemContent(title, sourceURL, contentHTML string) OfficialP
 	images := parseLeetCodeImages(withoutConstraints, sourceURL)
 
 	return OfficialProblemContent{
-		Source:    "LeetCode",
-		SourceURL: sourceURL,
-		Title:     title,
-		Statement: htmlToPlainText(statementHTML),
-		Examples:  examples,
-		Images:    images,
-		FetchedAt: time.Now().UTC().Format(time.RFC3339),
+		Source:      "LeetCode",
+		SourceURL:   sourceURL,
+		Title:       title,
+		Statement:   htmlToPlainText(statementHTML),
+		Constraints: parseLeetCodeConstraints(contentHTML),
+		Examples:    examples,
+		Images:      images,
+		FetchedAt:   time.Now().UTC().Format(time.RFC3339),
 	}
+}
+
+// parseLeetCodeConstraints operates on the original HTML (before the constraints
+// section is stripped for the statement). It grabs the block between the
+// Constraints heading and the next <strong> heading (e.g. "Follow up:"), then
+// returns each <li> item as plain text.
+func parseLeetCodeConstraints(contentHTML string) []string {
+	match := constraintsHeadingPattern.FindStringIndex(contentHTML)
+	if match == nil {
+		// Empty slice, not nil: JSON must encode [] so clients can index safely.
+		return []string{}
+	}
+	section := contentHTML[match[1]:]
+	if next := nextStrongHeadingPattern.FindStringIndex(section); next != nil {
+		section = section[:next[0]]
+	}
+	items := listItemPattern.FindAllStringSubmatch(section, -1)
+	constraints := make([]string, 0, len(items))
+	for _, item := range items {
+		if len(item) < 2 {
+			continue
+		}
+		text := strings.TrimSpace(htmlToPlainText(item[1]))
+		if text != "" {
+			constraints = append(constraints, text)
+		}
+	}
+	return constraints
 }
 
 var (
 	constraintsHeadingPattern = regexp.MustCompile(`(?is)<strong[^>]*>\s*Constraints\s*:?\s*</strong>`)
+	nextStrongHeadingPattern  = regexp.MustCompile(`(?is)<strong[^>]*>`)
+	listItemPattern           = regexp.MustCompile(`(?is)<li[^>]*>(.*?)</li>`)
 	exampleHeadingPattern     = regexp.MustCompile(`(?is)<strong[^>]*>\s*Example\s+\d+\s*:?\s*</strong>`)
 	exampleBlockPattern       = regexp.MustCompile(`(?is)<strong[^>]*>\s*Example\s+(\d+)\s*:?\s*</strong>.*?<pre[^>]*>(.*?)</pre>`)
 	imageTagPattern           = regexp.MustCompile(`(?is)<img\b[^>]*>`)

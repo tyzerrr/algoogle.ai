@@ -6,10 +6,43 @@ import (
 	"strings"
 )
 
+// formatMessageForPrompt renders a stored message for the AI conversation log,
+// surfacing artifact requests and submissions as explicit markers.
+func formatMessageForPrompt(m ChatMessage) string {
+	switch m.Kind {
+	case "artifact_request":
+		kind, topic, instructions := "", "", ""
+		if m.Payload != nil && m.Payload.ArtifactRequest != nil {
+			r := m.Payload.ArtifactRequest
+			kind, topic, instructions = r.Kind, r.Topic, r.Instructions
+		}
+		return fmt.Sprintf("assistant: %s\n[ARTIFACT REQUEST kind=%s topic=%s] %s", m.Content, kind, topic, instructions)
+	case "artifact":
+		kind, topic, artifactContent := "", "", ""
+		if m.Payload != nil && m.Payload.Artifact != nil {
+			a := m.Payload.Artifact
+			kind, topic, artifactContent = a.Kind, a.Topic, a.Content
+		}
+		return "user: " + formatArtifactBody(m.Content, kind, topic, artifactContent)
+	default:
+		return fmt.Sprintf("%s: %s", m.Role, m.Content)
+	}
+}
+
+func formatArtifactBody(content, kind, topic, artifactContent string) string {
+	return fmt.Sprintf("%s\n[ARTIFACT kind=%s topic=%s]\n%s", content, kind, topic, artifactContent)
+}
+
+// formatArtifactSubmissionForPrompt builds the userMessage passed to the AI when
+// the candidate answers via an artifact (same body as an artifact message, no role prefix).
+func formatArtifactSubmissionForPrompt(content string, sub ArtifactSubmission) string {
+	return formatArtifactBody(content, sub.Kind, sub.Topic, sub.Content)
+}
+
 func buildChatPrompt(problem Problem, attempt Attempt, messages []ChatMessage, userMessage string, englishMode bool, memory ProblemMemory) string {
 	conversation := []string{}
 	for _, message := range messages {
-		conversation = append(conversation, fmt.Sprintf("%s: %s", message.Role, message.Content))
+		conversation = append(conversation, formatMessageForPrompt(message))
 	}
 	mode := "日本語で会話してください。"
 	if englishMode {
@@ -17,6 +50,28 @@ func buildChatPrompt(problem Problem, attempt Attempt, messages []ChatMessage, u
 	}
 	testCases, _ := json.Marshal(problem.TestCases)
 	memoryJSON, _ := json.MarshalIndent(memory, "", "  ")
+	// Legacy attempts carry "planning" etc.; the prompt's phase enum only knows the 5 canonical values.
+	currentPhase := normalizePhase(attempt.CurrentPhase)
+	if currentPhase == "" {
+		currentPhase = "clarify"
+	}
+	phaseContract := fmt.Sprintf(`Interview phases (drive them; advance only when satisfied):
+1. clarify — the candidate restates the problem, constraints, and edge cases. Probe until the problem is unambiguous.
+2. plan — the core approach, why it works, data structures, and expected complexity. Do not approve coding before this is solid.
+3. code — implementation. If the candidate codes without an approved plan, pause them and return to the plan.
+4. dryrun — manual verification: trace concrete inputs, boundary cases, off-by-one risks. No test execution in real mode.
+5. followup — proof of correctness, complexity, harder variants, generalizations.
+
+Structured response contract (respond ONLY with a JSON object matching the schema):
+- "reply": your interviewer message, in the conversation language. Concise, exactly one main question.
+- "phase": the interview phase AFTER this reply. Current phase: %s. Stay on the current phase unless the candidate has satisfied it. Never move backward.
+- "artifact_request": null in most turns. Set it only when a written artifact genuinely helps right now:
+  - "pseudocode": before approving implementation, require pseudocode of the plan. Example reply: 「実装に入る前に、疑似コードを先に書いてください。」
+  - "diagram": when a data structure, state transition, or operation sequence is unclear, require a Mermaid diagram. Example reply: 「このデータ構造をMermaidの図で説明してください。」
+  - "notes": for correctness notes, complexity comparison tables, or edge-case lists as free-form markdown.
+- When you set artifact_request: "reply" must contain the same request in natural language; "instructions" must state exactly what the artifact has to show; "starter_content" must be a small useful scaffold (valid Mermaid source for kind "diagram", e.g. starting with "flowchart TD" or "sequenceDiagram").
+- Do not request a new artifact while an earlier request is still unanswered.
+- When the latest candidate message is an artifact submission (marked [ARTIFACT] below), critique it concretely in "reply": name at least one specific gap, incorrect step, or missing case before moving on. If whiteboard artifacts appear in candidate memory, treat them as shared context.`, currentPhase)
 	return fmt.Sprintf(`You are a strict but supportive coding interviewer running a realistic %s-style interview.
 
 Your job is to guide the candidate through the problem with Socratic questions. Do not reveal the final solution unless the user explicitly asks for it or has already solved the problem. Ask only one main question at a time.
@@ -36,20 +91,22 @@ Company-specific behavior:
 
 Rules:
 - Prefer questions over direct answers.
-- Give gradual hints when the user is stuck.
-- Before implementation, ask the candidate how they intend to solve it. Require a brute-force baseline, an optimized direction, data structures, invariants, and edge cases before you approve coding.
+- Give escalating hints when the candidate is stuck: first a nudge, then narrow the space, then a concrete hint. Observe how they use each hint.
+- Before implementation, have the candidate outline their approach: the core idea, why it beats the naive one, and expected complexity. A sound plan is enough — do not demand the same fixed checklist every problem.
 - If they jump to code too early, pause them and ask for the plan first.
 - Require multiple approaches when reasonable. If they only have one, nudge with a restrained hint without giving away the full solution.
-- Focus on understanding, constraints, brute force, optimization, edge cases, invariants, complexity, and implementation details.
+- Focus on understanding, constraints, approach trade-offs, edge cases, and complexity.
+- After the candidate writes code, expect them to trace it on a concrete example and edge cases WITHOUT being told. If they declare it done untested, ask once: "How do you know it works?"
+- Probe why the approach is correct at most once during planning and once after implementation, and only when correctness is genuinely non-obvious. Vary your wording across turns — do not fixate on any single term such as "invariant".
 - After code is written, review correctness and ask follow-ups about proof, failure modes, time complexity, and space complexity.
-- When a whiteboard would make the interview more realistic, explicitly ask the candidate to use WhiteBoard and name the mode: pseudocode, Mermaid sequence diagram, data structure, invariants, state transition, or complexity table.
-- If whiteboard artifacts are present in candidate memory, inspect them as shared interview context and ask precise questions about gaps, invalid transitions, missing invariants, or incomplete pseudocode.
 - If this is a repeated problem, use the candidate memory to ask a new, harder follow-up based on old mistakes. Avoid simply repeating an old question unless you are checking recovery.
 - Keep a high bar. Be kind, but do not accept vague explanations.
 - In real mode, act as if the candidate cannot run code or use autocomplete. Ask for dry runs and manual verification.
-- If the candidate is silent or vague, ask them to verbalize the exact invariant, next branch, or proof gap.
+- If the candidate is silent or vague, gently ask them to think aloud: what are they trying, and what will they check next?
 - If the user is wrong, point it out clearly without rewriting the full answer.
 - %s
+
+%s
 
 Problem:
 Title: %s
@@ -71,7 +128,7 @@ Conversation so far:
 Candidate message:
 %s
 
-Respond as the interviewer. Keep it concise and interview-like. Ask exactly one main question, with at most two short supporting prompts.`, attempt.CompanyPreset, aiProviderLabel(attempt.AIProvider), attempt.CompanyPreset, attempt.InterviewMode, attempt.CurrentPhase, attempt.TimeLimitSeconds, !attempt.NoRun, !attempt.NoAutocomplete, attempt.RequiresPlan, companyInterviewInstructions(attempt.CompanyPreset), mode, problem.Title, problem.Difficulty, problem.Pattern, problem.Statement, strings.Join(problem.Constraints, "; "), string(testCases), string(memoryJSON), attempt.Code, strings.Join(conversation, "\n"), userMessage)
+Respond as the interviewer with the JSON object only. Keep "reply" concise and interview-like: exactly one main question, at most two short supporting prompts.`, attempt.CompanyPreset, aiProviderLabel(attempt.AIProvider), attempt.CompanyPreset, attempt.InterviewMode, currentPhase, attempt.TimeLimitSeconds, !attempt.NoRun, !attempt.NoAutocomplete, attempt.RequiresPlan, companyInterviewInstructions(attempt.CompanyPreset), mode, phaseContract, problem.Title, problem.Difficulty, problem.Pattern, problem.Statement, strings.Join(problem.Constraints, "; "), string(testCases), string(memoryJSON), attempt.Code, strings.Join(conversation, "\n"), userMessage)
 }
 
 func buildReviewPrompt(problem Problem, attempt Attempt, code string, memory ProblemMemory) string {
@@ -121,7 +178,7 @@ Return only JSON matching the schema. Use Japanese for all human-readable string
 5. readability
 6. quality of interview explanation
 7. alternative approaches the candidate should be able to discuss
-8. follow-up questions that stress proof, complexity, and Google-level rigor
+8. follow-up questions that match the company preset's bar
 9. previous mistakes and whether this submission shows recovery
 10. a concrete discussion plan for the next interviewer exchange
 11. a scorecard across the interview dimensions
@@ -133,73 +190,7 @@ Return only JSON matching the schema. Use Japanese for all human-readable string
 Use scorecard scores from 1 to 4:
 1 = below bar, 2 = weak / inconsistent, 3 = meets bar, 4 = strong signal.
 
-Be strict. Passing local tests is not enough. Penalize missing clarifying questions, missing brute force, weak dry run, hand-wavy complexity, no proof, slow pacing, or dependency on running code.`, attempt.CompanyPreset, problem.Title, problem.Difficulty, problem.Pattern, problem.Statement, strings.Join(problem.Constraints, "\n"), aiProviderLabel(attempt.AIProvider), attempt.CompanyPreset, attempt.InterviewMode, !attempt.NoRun, !attempt.NoAutocomplete, companyEvaluationInstructions(attempt.CompanyPreset), string(memoryJSON), code, testResult)
-}
-
-func buildWhiteboardSuggestionPrompt(problem Problem, attempt Attempt, messages []ChatMessage, memory ProblemMemory, userMessage string) string {
-	conversation := []string{}
-	for _, message := range messages {
-		conversation = append(conversation, fmt.Sprintf("%s: %s", message.Role, message.Content))
-	}
-	memoryJSON, _ := json.MarshalIndent(memory, "", "  ")
-	return fmt.Sprintf(`You are the interviewer deciding whether the candidate should use a whiteboard-like artifact in a realistic coding interview.
-
-Return only JSON matching the schema. Use Japanese for all human-readable strings.
-
-Decide whether WhiteBoard would improve the interview right now.
-Use WhiteBoard when the candidate needs to:
-- sketch pseudocode before coding
-- explain data structures or invariants
-- draw a sequence of operations in Mermaid
-- reason through state transitions
-- compare time/space trade-offs
-- debug a proof or edge-case gap without running code
-
-Do not use WhiteBoard if the next best step is a single short verbal answer.
-
-Allowed kind values:
-- pseudocode
-- mermaid_sequence
-- data_structure
-- invariants
-- state_transition
-- complexity_table
-
-Interview configuration:
-- AI provider: %s
-- Company preset: %s
-- Mode: %s
-- Current phase: %s
-- Local run allowed: %t
-- Autocomplete allowed: %t
-
-Problem:
-Title: %s
-Difficulty: %s
-Pattern: %s
-Statement: %s
-Constraints: %s
-
-Candidate memory, including prior whiteboards:
-%s
-
-Current code:
-%s
-
-Conversation so far:
-%s
-
-Candidate latest request or UI context:
-%s
-
-If use_whiteboard is true, produce:
-- kind: the best whiteboard kind
-- topic: the exact topic to discuss
-- prompt: the interviewer instruction the candidate should respond to
-- starter_content: a useful starter scaffold. For mermaid_sequence, return valid Mermaid sequenceDiagram syntax.
-- reason: why this whiteboard is useful now
-
-If use_whiteboard is false, still fill kind/topic/prompt/starter_content with empty strings and explain why in reason.`, aiProviderLabel(attempt.AIProvider), attempt.CompanyPreset, attempt.InterviewMode, attempt.CurrentPhase, !attempt.NoRun, !attempt.NoAutocomplete, problem.Title, problem.Difficulty, problem.Pattern, problem.Statement, strings.Join(problem.Constraints, "; "), string(memoryJSON), attempt.Code, strings.Join(conversation, "\n"), userMessage)
+Be strict. Passing local tests is not enough. Penalize missing clarifying questions, missing brute force, weak dry run, hand-wavy complexity, unverified code, slow pacing, or dependency on running code.`, attempt.CompanyPreset, problem.Title, problem.Difficulty, problem.Pattern, problem.Statement, strings.Join(problem.Constraints, "\n"), aiProviderLabel(attempt.AIProvider), attempt.CompanyPreset, attempt.InterviewMode, !attempt.NoRun, !attempt.NoAutocomplete, companyEvaluationInstructions(attempt.CompanyPreset), string(memoryJSON), code, testResult)
 }
 
 func companyInterviewInstructions(companyPreset string) string {
@@ -209,7 +200,7 @@ func companyInterviewInstructions(companyPreset string) string {
 	case "amazon":
 		return "- Ask for trade-offs, customer-impacting edge cases, and operational failure modes.\n- Mix in one behavioral-style follow-up when appropriate, but keep the coding problem central.\n- Evaluate whether the candidate makes pragmatic decisions under constraints."
 	case "google":
-		return "- Go deep on ambiguity, invariants, proof of correctness, and generalized follow-ups.\n- Prefer one problem explored thoroughly over rushing.\n- Push the candidate to justify why the optimized approach is actually correct."
+		return "- Run this like a real 45-minute Google onsite: one problem explored deeply. If the candidate finishes early, extend with a harder variant or a scale-up follow-up (huge input, streaming, memory limits).\n- The statement is intentionally underspecified. Expect clarifying questions first (ranges, duplicates, empty input, output format). If the candidate skips clarification, let them run into the ambiguity instead of warning them.\n- Collaborate, don't interrogate. Think \"let's solve this together\", with a high bar.\n- Ask why the chosen approach is always correct only when it is genuinely non-obvious (binary search bounds, greedy choices, window shrinking) — once at plan time, once after coding at most.\n- Ask for time and space complexity with justification once, near the end."
 	default:
 		return "- Balance correctness, communication, pace, dry run, and complexity.\n- Ask realistic follow-ups without giving away the answer."
 	}
@@ -222,7 +213,7 @@ func companyEvaluationInstructions(companyPreset string) string {
 	case "amazon":
 		return "Score technical correctness, trade-off clarity, customer-centric edge cases, and behavioral signal under ambiguity."
 	case "google":
-		return "Score problem decomposition, proof, invariants, optimality, edge cases, communication, and ability to handle deeper follow-ups."
+		return "Score along Google's four axes: problem solving (decomposition, approach quality, correctness reasoning), coding (clean, working code written without run support), communication (thinking aloud, clarifying questions, using hints well), and growth signals (recovering from mistakes, handling follow-ups). Reserve 4 for candidates who reached the optimal approach with minimal hints and verified their own code unprompted."
 	default:
 		return "Score correctness, communication, code quality, verification, complexity, and follow-up handling."
 	}
@@ -328,21 +319,6 @@ func reviewJSONSchema() string {
 }`
 }
 
-func whiteboardSuggestionJSONSchema() string {
-	return `{
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "use_whiteboard": { "type": "boolean" },
-    "kind": {
-      "type": "string",
-      "enum": ["pseudocode", "mermaid_sequence", "data_structure", "invariants", "state_transition", "complexity_table", ""]
-    },
-    "topic": { "type": "string" },
-    "prompt": { "type": "string" },
-    "starter_content": { "type": "string" },
-    "reason": { "type": "string" }
-  },
-  "required": ["use_whiteboard", "kind", "topic", "prompt", "starter_content", "reason"]
-}`
+func interviewerTurnJSONSchema() string {
+	return `{"type":"object","additionalProperties":false,"properties":{"reply":{"type":"string"},"phase":{"type":"string","enum":["clarify","plan","code","dryrun","followup"]},"artifact_request":{"anyOf":[{"type":"null"},{"type":"object","additionalProperties":false,"properties":{"kind":{"type":"string","enum":["pseudocode","diagram","notes"]},"topic":{"type":"string"},"instructions":{"type":"string"},"starter_content":{"type":"string"}},"required":["kind","topic","instructions","starter_content"]}]}},"required":["reply","phase","artifact_request"]}`
 }

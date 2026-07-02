@@ -26,3 +26,6 @@ workspace/
 .env
 .env.*
 !.env.example
+
+# Claude Code local project memory
+CLAUDE.local.md

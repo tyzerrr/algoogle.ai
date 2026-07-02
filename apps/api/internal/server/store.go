@@ -57,6 +57,7 @@ func (s *Store) migrate() error {
 			pattern TEXT NOT NULL,
 			tags TEXT NOT NULL,
 			statement TEXT NOT NULL,
+			statement_is_placeholder INTEGER NOT NULL DEFAULT 0,
 			examples TEXT NOT NULL,
 			constraints_text TEXT NOT NULL,
 			starter_code TEXT NOT NULL,
@@ -98,6 +99,8 @@ func (s *Store) migrate() error {
 			attempt_id TEXT NOT NULL,
 			role TEXT NOT NULL,
 			content TEXT NOT NULL,
+			kind TEXT NOT NULL DEFAULT 'text',
+			payload TEXT,
 			created_at TEXT NOT NULL,
 			FOREIGN KEY (attempt_id) REFERENCES attempts(id)
 		)`,
@@ -155,6 +158,11 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_weakness_category_created ON weakness_signals(category, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_whiteboards_attempt_updated ON whiteboard_artifacts(attempt_id, updated_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_whiteboards_problem_updated ON whiteboard_artifacts(problem_id, updated_at DESC)`,
+		`CREATE TABLE IF NOT EXISTS official_problem_content (
+			problem_id TEXT PRIMARY KEY,
+			payload TEXT NOT NULL,
+			fetched_at TEXT NOT NULL
+		)`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.Exec(statement); err != nil {
@@ -165,6 +173,7 @@ func (s *Store) migrate() error {
 		`ALTER TABLE problems ADD COLUMN source_url TEXT`,
 		`ALTER TABLE problems ADD COLUMN list_name TEXT NOT NULL DEFAULT 'Arai60'`,
 		`ALTER TABLE problems ADD COLUMN order_index INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE problems ADD COLUMN statement_is_placeholder INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE attempts ADD COLUMN outcome TEXT NOT NULL DEFAULT 'in_progress'`,
 		`ALTER TABLE attempts ADD COLUMN ai_provider TEXT NOT NULL DEFAULT 'codex'`,
 		`ALTER TABLE attempts ADD COLUMN company_preset TEXT NOT NULL DEFAULT 'google'`,
@@ -178,6 +187,8 @@ func (s *Store) migrate() error {
 		`ALTER TABLE attempts ADD COLUMN solved_without_followups INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE attempts ADD COLUMN mistake_summary TEXT`,
 		`ALTER TABLE attempts ADD COLUMN completed_at TEXT`,
+		`ALTER TABLE chat_messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'`,
+		`ALTER TABLE chat_messages ADD COLUMN payload TEXT`,
 	} {
 		if _, err := s.db.Exec(column); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 			return err
@@ -194,14 +205,15 @@ func (s *Store) Seed(problems []Problem) error {
 		testCases, _ := json.Marshal(problem.TestCases)
 		_, err := s.db.Exec(
 			`INSERT INTO problems
-			(id, title, difficulty, pattern, tags, statement, examples, constraints_text, starter_code, test_cases, solution_explanation, source_url, list_name, order_index, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(id, title, difficulty, pattern, tags, statement, statement_is_placeholder, examples, constraints_text, starter_code, test_cases, solution_explanation, source_url, list_name, order_index, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET
 				title = excluded.title,
 				difficulty = excluded.difficulty,
 				pattern = excluded.pattern,
 				tags = excluded.tags,
 				statement = excluded.statement,
+				statement_is_placeholder = excluded.statement_is_placeholder,
 				examples = excluded.examples,
 				constraints_text = excluded.constraints_text,
 				starter_code = excluded.starter_code,
@@ -216,6 +228,7 @@ func (s *Store) Seed(problems []Problem) error {
 			problem.Pattern,
 			string(tags),
 			problem.Statement,
+			boolInt(problem.StatementIsPlaceholder),
 			string(examples),
 			string(constraintsText),
 			problem.StarterCode,
@@ -268,7 +281,7 @@ func (s *Store) ListProblems() ([]ProblemListItem, error) {
 
 func (s *Store) GetProblem(problemID string) (*Problem, error) {
 	row := s.db.QueryRow(
-		`SELECT id, title, difficulty, pattern, tags, statement, examples, constraints_text, starter_code,
+		`SELECT id, title, difficulty, pattern, tags, statement, statement_is_placeholder, examples, constraints_text, starter_code,
 			test_cases, COALESCE(solution_explanation, ''), COALESCE(source_url, ''), COALESCE(list_name, ''),
 			order_index, created_at
 		FROM problems WHERE id = ?`,
@@ -276,6 +289,7 @@ func (s *Store) GetProblem(problemID string) (*Problem, error) {
 	)
 	var p Problem
 	var tagsText, examplesText, constraintsText, testCasesText string
+	var statementIsPlaceholder int
 	if err := row.Scan(
 		&p.ID,
 		&p.Title,
@@ -283,6 +297,7 @@ func (s *Store) GetProblem(problemID string) (*Problem, error) {
 		&p.Pattern,
 		&tagsText,
 		&p.Statement,
+		&statementIsPlaceholder,
 		&examplesText,
 		&constraintsText,
 		&p.StarterCode,
@@ -298,6 +313,7 @@ func (s *Store) GetProblem(problemID string) (*Problem, error) {
 		}
 		return nil, err
 	}
+	p.StatementIsPlaceholder = statementIsPlaceholder == 1
 	_ = json.Unmarshal([]byte(tagsText), &p.Tags)
 	_ = json.Unmarshal([]byte(examplesText), &p.Examples)
 	_ = json.Unmarshal([]byte(constraintsText), &p.Constraints)
@@ -311,6 +327,44 @@ func (s *Store) GetProblem(problemID string) (*Problem, error) {
 	p.SolvedWithoutFollowUps = item.SolvedWithoutFollowUps
 	p.LastAttemptedAt = item.LastAttemptedAt
 	return &p, nil
+}
+
+func (s *Store) GetOfficialContent(problemID string) (*OfficialProblemContent, error) {
+	row := s.db.QueryRow(`SELECT payload FROM official_problem_content WHERE problem_id = ?`, problemID)
+	var payload string
+	if err := row.Scan(&payload); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	var content OfficialProblemContent
+	if err := json.Unmarshal([]byte(payload), &content); err != nil {
+		return nil, err
+	}
+	return &content, nil
+}
+
+func (s *Store) SaveOfficialContent(problemID string, content OfficialProblemContent) error {
+	payload, err := json.Marshal(content)
+	if err != nil {
+		return err
+	}
+	fetchedAt := content.FetchedAt
+	if fetchedAt == "" {
+		fetchedAt = now()
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO official_problem_content (problem_id, payload, fetched_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(problem_id) DO UPDATE SET
+			payload = excluded.payload,
+			fetched_at = excluded.fetched_at`,
+		problemID,
+		string(payload),
+		fetchedAt,
+	)
+	return err
 }
 
 func (s *Store) CreateAttempt(req CreateAttemptRequest) (*Attempt, error) {
@@ -434,16 +488,33 @@ func (s *Store) RecentAttempts(limit int) ([]Attempt, error) {
 }
 
 func (s *Store) AddMessage(attemptID, role, content string) (*ChatMessage, error) {
+	return s.AddStructuredMessage(attemptID, role, content, "text", nil)
+}
+
+func (s *Store) AddStructuredMessage(attemptID, role, content, kind string, payload *ChatMessagePayload) (*ChatMessage, error) {
+	if strings.TrimSpace(kind) == "" {
+		kind = "text"
+	}
 	message := ChatMessage{
 		ID:        newID(),
 		AttemptID: attemptID,
 		Role:      role,
 		Content:   content,
+		Kind:      kind,
+		Payload:   payload,
 		CreatedAt: now(),
 	}
+	var payloadValue interface{}
+	if payload != nil {
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+		payloadValue = string(encoded)
+	}
 	_, err := s.db.Exec(
-		`INSERT INTO chat_messages (id, attempt_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
-		message.ID, message.AttemptID, message.Role, message.Content, message.CreatedAt,
+		`INSERT INTO chat_messages (id, attempt_id, role, content, kind, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		message.ID, message.AttemptID, message.Role, message.Content, message.Kind, payloadValue, message.CreatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -471,8 +542,8 @@ func (s *Store) EnsureInitialMessage(attemptID, content string) (*ChatMessage, e
 
 func (s *Store) ListMessages(attemptID string) ([]ChatMessage, error) {
 	rows, err := s.db.Query(
-		`SELECT id, attempt_id, role, content, created_at
-		FROM chat_messages WHERE attempt_id = ? ORDER BY created_at ASC`,
+		`SELECT id, attempt_id, role, content, COALESCE(kind, 'text'), payload, created_at
+		FROM chat_messages WHERE attempt_id = ? ORDER BY created_at ASC, id ASC`,
 		attemptID,
 	)
 	if err != nil {
@@ -482,13 +553,55 @@ func (s *Store) ListMessages(attemptID string) ([]ChatMessage, error) {
 
 	messages := []ChatMessage{}
 	for rows.Next() {
-		var message ChatMessage
-		if err := rows.Scan(&message.ID, &message.AttemptID, &message.Role, &message.Content, &message.CreatedAt); err != nil {
+		message, err := scanMessage(rows)
+		if err != nil {
 			return nil, err
 		}
-		messages = append(messages, message)
+		messages = append(messages, *message)
 	}
 	return messages, rows.Err()
+}
+
+func (s *Store) GetMessage(attemptID, messageID string) (*ChatMessage, error) {
+	row := s.db.QueryRow(
+		`SELECT id, attempt_id, role, content, COALESCE(kind, 'text'), payload, created_at
+		FROM chat_messages WHERE id = ? AND attempt_id = ?`,
+		messageID, attemptID,
+	)
+	message, err := scanMessage(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return message, nil
+}
+
+type messageScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+func scanMessage(row messageScanner) (*ChatMessage, error) {
+	var message ChatMessage
+	var payload sql.NullString
+	if err := row.Scan(&message.ID, &message.AttemptID, &message.Role, &message.Content, &message.Kind, &payload, &message.CreatedAt); err != nil {
+		return nil, err
+	}
+	if payload.Valid && strings.TrimSpace(payload.String) != "" {
+		var decoded ChatMessagePayload
+		if err := json.Unmarshal([]byte(payload.String), &decoded); err == nil {
+			message.Payload = &decoded
+		}
+	}
+	return &message, nil
+}
+
+func (s *Store) UpdateAttemptPhase(attemptID, phase string) (*Attempt, error) {
+	if _, err := s.db.Exec(`UPDATE attempts SET current_phase = ? WHERE id = ?`, phase, attemptID); err != nil {
+		return nil, err
+	}
+	return s.GetAttempt(attemptID)
 }
 
 func (s *Store) CreateWhiteboard(attemptID string, req WhiteboardRequest) (*WhiteboardArtifact, error) {
@@ -530,44 +643,6 @@ func (s *Store) CreateWhiteboard(attemptID string, req WhiteboardRequest) (*Whit
 	return &item, nil
 }
 
-func (s *Store) UpdateWhiteboard(attemptID, whiteboardID string, req WhiteboardRequest) (*WhiteboardArtifact, error) {
-	if _, err := s.GetAttempt(attemptID); err != nil {
-		return nil, err
-	}
-	_, err := s.db.Exec(
-		`UPDATE whiteboard_artifacts
-		SET kind = ?, topic = ?, prompt = ?, content = ?, version = version + 1, updated_at = ?
-		WHERE id = ? AND attempt_id = ?`,
-		normalizeWhiteboardKind(req.Kind),
-		trimOrDefault(req.Topic, "WhiteBoard discussion"),
-		strings.TrimSpace(req.Prompt),
-		strings.TrimSpace(req.Content),
-		now(),
-		whiteboardID,
-		attemptID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return s.GetWhiteboard(attemptID, whiteboardID)
-}
-
-func (s *Store) GetWhiteboard(attemptID, whiteboardID string) (*WhiteboardArtifact, error) {
-	row := s.db.QueryRow(
-		`SELECT id, attempt_id, problem_id, kind, topic, prompt, content, version, created_at, updated_at
-		FROM whiteboard_artifacts WHERE id = ? AND attempt_id = ?`,
-		whiteboardID,
-		attemptID,
-	)
-	item, err := scanWhiteboard(row)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	return item, nil
-}
 
 func (s *Store) ListWhiteboardsForAttempt(attemptID string) ([]WhiteboardArtifact, error) {
 	rows, err := s.db.Query(

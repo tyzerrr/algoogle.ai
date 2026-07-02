@@ -1,5 +1,8 @@
 import { ExternalLink } from "lucide-react";
 import type { OfficialProblemContent, Problem } from "@/lib/types";
+import { resolveStatementView } from "@/lib/statementView";
+import ErrorNotice from "@/components/ui/ErrorNotice";
+import { SkeletonBlock } from "@/components/ui/Skeleton";
 
 export default function ProblemStatement({
   problem,
@@ -8,6 +11,7 @@ export default function ProblemStatement({
   officialError,
   language,
   onLanguageChange,
+  onRetryOfficial,
 }: {
   problem: Problem;
   officialContent?: OfficialProblemContent | null;
@@ -15,13 +19,15 @@ export default function ProblemStatement({
   officialError?: string;
   language: "ja" | "en";
   onLanguageChange: (language: "ja" | "en") => void;
+  onRetryOfficial?: () => void;
 }) {
-  const canShowEnglish = Boolean(officialContent?.statement);
-  const useEnglish = language === "en" && canShowEnglish;
-  const statement = useEnglish ? officialContent?.statement ?? problem.statement : problem.statement;
-  const examples = useEnglish && officialContent?.examples.length ? officialContent.examples : problem.examples;
-  const sourceLabel = useEnglish ? `${officialContent?.source ?? "LeetCode"}本文` : "日本語";
-  const images = officialContent?.images ?? [];
+  const view = resolveStatementView({
+    problem,
+    official: officialContent,
+    officialLoading,
+    officialError,
+    language,
+  });
 
   return (
     <div className="statement">
@@ -31,33 +37,45 @@ export default function ProblemStatement({
           <span className="difficulty">{problem.difficulty}</span>
           <span className="tag">{problem.pattern}</span>
           {problem.list_name ? <span className="tag">{problem.list_name}</span> : null}
-          <span className="tag">{sourceLabel}</span>
+          <span className="tag">{view.sourceBadge}</span>
         </div>
-        <div className="segmented segmentedTwo statementLanguage" aria-label="問題文の言語">
-          <button
-            className={`segmentButton ${language === "ja" ? "segmentButtonActive" : ""}`}
-            type="button"
-            onClick={() => onLanguageChange("ja")}
-          >
-            日本語
-          </button>
-          <button
-            className={`segmentButton ${language === "en" ? "segmentButtonActive" : ""}`}
-            type="button"
-            onClick={() => onLanguageChange("en")}
-          >
-            English
-          </button>
-        </div>
+        {view.showLanguageToggle ? (
+          <div className="segmented segmentedTwo statementLanguage" aria-label="問題文の言語">
+            <button
+              className={`segmentButton ${language === "ja" ? "segmentButtonActive" : ""}`}
+              type="button"
+              onClick={() => onLanguageChange("ja")}
+            >
+              日本語
+            </button>
+            <button
+              className={`segmentButton ${language === "en" ? "segmentButtonActive" : ""}`}
+              type="button"
+              onClick={() => onLanguageChange("en")}
+            >
+              English
+            </button>
+          </div>
+        ) : null}
       </div>
-      {officialLoading ? <p className="muted">本家問題文を取得中...</p> : null}
-      {officialError && language === "en" ? (
-        <p className="muted">本家問題文を取得できないため、日本語表示に戻しています。</p>
+
+      {view.mode === "official-fallback" ? (
+        <ErrorNotice
+          message="LeetCodeから問題文を取得できませんでした"
+          onRetry={onRetryOfficial}
+          retryLabel="再取得"
+        />
       ) : null}
-      <p className="statementText">{statement}</p>
-      {images.length ? (
+
+      {view.mode === "official-loading" ? (
+        <SkeletonBlock lines={5} />
+      ) : (
+        <p className="statementText">{view.statement}</p>
+      )}
+
+      {view.images.length ? (
         <div className="officialFigures">
-          {images.map((image) => (
+          {view.images.map((image) => (
             <figure className="officialFigure" key={image.url}>
               <img
                 src={image.url}
@@ -70,6 +88,46 @@ export default function ProblemStatement({
           ))}
         </div>
       ) : null}
+
+      {view.constraints.length ? (
+        <>
+          <h3>制約</h3>
+          <ul className="constraints">
+            {view.constraints.map((constraint, index) => (
+              <li key={`${constraint}-${index}`}>{constraint}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {view.examples.length ? (
+        <>
+          <h3>例</h3>
+          {view.examples.map((example, index) => (
+            <div className="example" key={`${example.input}-${index}`}>
+              <p>
+                <strong>Input:</strong> <code>{example.input}</code>
+              </p>
+              <p>
+                <strong>Output:</strong> <code>{example.output}</code>
+              </p>
+              {example.explanation ? <p className="muted">{example.explanation}</p> : null}
+            </div>
+          ))}
+        </>
+      ) : null}
+
+      {view.guidance.length ? (
+        <>
+          <h3>進め方</h3>
+          <ul className="constraints guidanceList">
+            {view.guidance.map((item, index) => (
+              <li key={`${item}-${index}`}>{item}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
       {problem.source_url ? (
         <p className="sourceLinkRow">
           <a
@@ -84,19 +142,6 @@ export default function ProblemStatement({
           </a>
         </p>
       ) : null}
-
-      <h3>例</h3>
-      {examples.map((example, index) => (
-        <div className="example" key={`${example.input}-${index}`}>
-          <p>
-            <strong>Input:</strong> <code>{example.input}</code>
-          </p>
-          <p>
-            <strong>Output:</strong> <code>{example.output}</code>
-          </p>
-          {example.explanation ? <p className="muted">{example.explanation}</p> : null}
-        </div>
-      ))}
     </div>
   );
 }

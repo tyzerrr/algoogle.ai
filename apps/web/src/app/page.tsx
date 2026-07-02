@@ -4,18 +4,22 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, ClipboardCheck, Target } from "lucide-react";
 import { api } from "@/lib/api";
+import ErrorNotice from "@/components/ui/ErrorNotice";
+import { SkeletonBlock } from "@/components/ui/Skeleton";
 import type { DailyResponse } from "@/lib/types";
 
 export default function HomePage() {
   const [daily, setDaily] = useState<DailyResponse | null>(null);
   const [error, setError] = useState("");
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
+    setError("");
     api
       .daily()
       .then(setDaily)
       .catch((err: Error) => setError(err.message));
-  }, []);
+  }, [reloadTick]);
 
   return (
     <main className="page">
@@ -39,10 +43,16 @@ export default function HomePage() {
         </div>
       </div>
 
-      {error ? <div className="error">{error}</div> : null}
+      {error ? (
+        <ErrorNotice
+          message="今日の問題を読み込めませんでした"
+          onRetry={() => setReloadTick((tick) => tick + 1)}
+          retryLabel="再取得"
+        />
+      ) : null}
 
       {!daily && !error ? (
-        <div className="empty">今日の問題を選んでいます...</div>
+        <SkeletonBlock lines={5} />
       ) : daily ? (
         <div className="dailyLayout">
           <section className="band">

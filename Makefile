@@ -52,6 +52,7 @@ test-api:
 test-web:
 	cd apps/web && NODE_OPTIONS=--no-deprecation corepack pnpm install --frozen-lockfile
 	cd apps/web && corepack pnpm typecheck
+	cd apps/web && corepack pnpm test
 	cd apps/web && NEXT_TELEMETRY_DISABLED=1 corepack pnpm build
 
 clean:

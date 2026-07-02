@@ -55,6 +55,7 @@ export default function ReviewPanel({ review }: { review?: ReviewResponse }) {
       <section>
         <h3>
           <Gauge size={17} /> Interview scorecard
+          <span className="scaleNote muted">各項目 0-4 で評価</span>
         </h3>
         {scorecard.length === 0 ? (
           <p className="muted">scorecardはまだありません。</p>

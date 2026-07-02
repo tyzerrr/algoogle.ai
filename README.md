@@ -47,11 +47,21 @@ AIチャットとAIレビューは、APIキーをアプリに保存せず、ロ�
 ```bash
 codex login
 codex exec --help
-claude auth
+claude setup-token
 claude -p --help
 ```
 
 Docker ComposeではLinux版の `@openai/codex` と `@anthropic-ai/claude-code` をAPIコンテナに入れ、ホストの `${HOME}/.codex` と `${HOME}/.claude` を読み取り専用でマウントします。
+
+### Claude Codeの認証（Docker）
+
+macOSでは `claude` のログイン認証情報がKeychainに保存されるため、`${HOME}/.claude` の読み取り専用マウントだけではコンテナ内のCLIを認証できません。Docker上でClaude Codeを使う場合は次の手順で認証してください。
+
+1. ホストで `claude setup-token` を実行し、表示されたOAuthトークンをコピーする
+2. プロジェクトの `.env` に `CLAUDE_CODE_OAUTH_TOKEN=<コピーしたトークン>` を設定する（`ANTHROPIC_API_KEY` でも代替可能）
+3. `make up`（または `docker compose up`）でAPIコンテナを起動し直す
+
+`CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` はcompose経由でAPIコンテナに環境変数として渡されます。トークンは秘匿情報なのでcommitしないでください。
 
 ## Credential管理
 
@@ -174,6 +184,8 @@ corepack pnpm dev
 - `CLAUDE_MODEL`: 必要な場合だけClaude Code CLIに渡すモデル名
 - `CLAUDE_WORKDIR`: Claude Code CLIの作業ディレクトリ
 - `CLAUDE_CLI_TIMEOUT_SECONDS`: Claude Code CLIのタイムアウト秒数
+- `CLAUDE_CODE_OAUTH_TOKEN`: Claude Code CLIの認証トークン（ホストで `claude setup-token` を実行して取得）
+- `ANTHROPIC_API_KEY`: 任意。Anthropic APIキーで認証する場合に設定
 - `CODE_WORKSPACE_DIR`: APIが同期ファイルを読み書きするディレクトリ
 - `CODE_WORKSPACE_PUBLIC_DIR`: Webに表示する同期ファイルのパス
 - `NEXT_PUBLIC_API_BASE_URL`: Webから参照するAPI URL

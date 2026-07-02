@@ -1,6 +1,9 @@
 package server
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestStoreSeedsProblemsAndTracksAttemptState(t *testing.T) {
 	store, err := NewStore("sqlite:///:memory:")
@@ -170,28 +173,15 @@ func TestStorePersistsWhiteboardsInAttemptAndMemory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create whiteboard: %v", err)
 	}
-	if whiteboard.Kind != "mermaid_sequence" || whiteboard.Version != 1 || whiteboard.ProblemID != "valid-parentheses" {
+	if whiteboard.Kind != "diagram" || whiteboard.Version != 1 || whiteboard.ProblemID != "valid-parentheses" {
 		t.Fatalf("unexpected whiteboard: %#v", whiteboard)
-	}
-
-	updated, err := store.UpdateWhiteboard(attempt.ID, whiteboard.ID, WhiteboardRequest{
-		Kind:    "ds",
-		Topic:   "stack invariant",
-		Prompt:  "保持する不変条件を書いてください。",
-		Content: "Invariant:\n- stack contains unmatched opening brackets",
-	})
-	if err != nil {
-		t.Fatalf("update whiteboard: %v", err)
-	}
-	if updated.Kind != "data_structure" || updated.Version != 2 || updated.Topic != "stack invariant" {
-		t.Fatalf("unexpected updated whiteboard: %#v", updated)
 	}
 
 	items, err := store.ListWhiteboardsForAttempt(attempt.ID)
 	if err != nil {
 		t.Fatalf("list whiteboards: %v", err)
 	}
-	if len(items) != 1 || items[0].ID != whiteboard.ID || items[0].Content != updated.Content {
+	if len(items) != 1 || items[0].ID != whiteboard.ID || items[0].Content != whiteboard.Content {
 		t.Fatalf("unexpected whiteboard list: %#v", items)
 	}
 
@@ -201,6 +191,110 @@ func TestStorePersistsWhiteboardsInAttemptAndMemory(t *testing.T) {
 	}
 	if len(memory.Whiteboards) != 1 || memory.Whiteboards[0].ID != whiteboard.ID {
 		t.Fatalf("expected whiteboard in problem memory, got %#v", memory.Whiteboards)
+	}
+}
+
+func TestAddStructuredMessageRoundTrip(t *testing.T) {
+	store := newSeededStore(t)
+	attempt, err := store.CreateAttempt(CreateAttemptRequest{ProblemID: "two-sum"})
+	if err != nil {
+		t.Fatalf("create attempt: %v", err)
+	}
+
+	payload := &ChatMessagePayload{ArtifactRequest: &ArtifactRequest{
+		Kind:         "diagram",
+		Topic:        "stack",
+		Instructions: "Mermaidで図示",
+	}}
+	saved, err := store.AddStructuredMessage(attempt.ID, "assistant", "図を書いてください。", "artifact_request", payload)
+	if err != nil {
+		t.Fatalf("add structured message: %v", err)
+	}
+	if saved.Kind != "artifact_request" {
+		t.Fatalf("expected kind persisted, got %q", saved.Kind)
+	}
+
+	messages, err := store.ListMessages(attempt.ID)
+	if err != nil {
+		t.Fatalf("list messages: %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(messages))
+	}
+	m := messages[0]
+	if m.Kind != "artifact_request" || m.Payload == nil || m.Payload.ArtifactRequest == nil {
+		t.Fatalf("payload did not round-trip: %#v", m)
+	}
+	if m.Payload.ArtifactRequest.Kind != "diagram" || m.Payload.ArtifactRequest.Instructions != "Mermaidで図示" {
+		t.Fatalf("unexpected artifact request round-trip: %#v", m.Payload.ArtifactRequest)
+	}
+
+	// Same-second tie-break: rows with identical created_at order by id ASC.
+	ts := "2099-01-01T00:00:00Z"
+	if _, err := store.db.Exec(`INSERT INTO chat_messages (id, attempt_id, role, content, kind, payload, created_at) VALUES (?, ?, ?, ?, 'text', NULL, ?)`, "b", attempt.ID, "user", "second", ts); err != nil {
+		t.Fatalf("insert tie b: %v", err)
+	}
+	if _, err := store.db.Exec(`INSERT INTO chat_messages (id, attempt_id, role, content, kind, payload, created_at) VALUES (?, ?, ?, ?, 'text', NULL, ?)`, "a", attempt.ID, "user", "first", ts); err != nil {
+		t.Fatalf("insert tie a: %v", err)
+	}
+	ordered, err := store.ListMessages(attempt.ID)
+	if err != nil {
+		t.Fatalf("list messages after ties: %v", err)
+	}
+	if len(ordered) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(ordered))
+	}
+	if ordered[1].ID != "a" || ordered[2].ID != "b" {
+		t.Fatalf("expected id ASC tie-break, got %q then %q", ordered[1].ID, ordered[2].ID)
+	}
+}
+
+func TestUpdateAttemptPhase(t *testing.T) {
+	store := newSeededStore(t)
+	attempt, err := store.CreateAttempt(CreateAttemptRequest{ProblemID: "two-sum"})
+	if err != nil {
+		t.Fatalf("create attempt: %v", err)
+	}
+	if attempt.CurrentPhase != "clarify" {
+		t.Fatalf("expected new attempt at clarify, got %q", attempt.CurrentPhase)
+	}
+	updated, err := store.UpdateAttemptPhase(attempt.ID, "plan")
+	if err != nil {
+		t.Fatalf("update phase: %v", err)
+	}
+	if updated.CurrentPhase != "plan" {
+		t.Fatalf("expected phase plan, got %q", updated.CurrentPhase)
+	}
+	reloaded, err := store.GetAttempt(attempt.ID)
+	if err != nil {
+		t.Fatalf("get attempt: %v", err)
+	}
+	if reloaded.CurrentPhase != "plan" {
+		t.Fatalf("expected persisted phase plan, got %q", reloaded.CurrentPhase)
+	}
+}
+
+func TestGetMessage(t *testing.T) {
+	store := newSeededStore(t)
+	attempt, err := store.CreateAttempt(CreateAttemptRequest{ProblemID: "two-sum"})
+	if err != nil {
+		t.Fatalf("create attempt: %v", err)
+	}
+	saved, err := store.AddStructuredMessage(attempt.ID, "assistant", "hi", "artifact_request", &ChatMessagePayload{
+		ArtifactRequest: &ArtifactRequest{Kind: "pseudocode", Topic: "plan", Instructions: "書いて"},
+	})
+	if err != nil {
+		t.Fatalf("add message: %v", err)
+	}
+	got, err := store.GetMessage(attempt.ID, saved.ID)
+	if err != nil {
+		t.Fatalf("get message: %v", err)
+	}
+	if got.Payload == nil || got.Payload.ArtifactRequest == nil || got.Payload.ArtifactRequest.Instructions != "書いて" {
+		t.Fatalf("unexpected message payload: %#v", got)
+	}
+	if _, err := store.GetMessage(attempt.ID, "does-not-exist"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for missing message, got %v", err)
 	}
 }
 

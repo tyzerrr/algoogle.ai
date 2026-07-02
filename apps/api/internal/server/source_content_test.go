@@ -66,6 +66,51 @@ func TestParseLeetCodeProblemContentKeepsStatementAndExamplesOnly(t *testing.T) 
 	}
 }
 
+func TestParseLeetCodeConstraintsWithoutHeadingReturnsEmptyNotNil(t *testing.T) {
+	parsed := parseLeetCodeProblemContent("Two Sum", "https://leetcode.com/problems/two-sum/", "<p>Statement only.</p>")
+	if parsed.Constraints == nil {
+		t.Fatal("constraints must be an empty slice, not nil, so JSON encodes [] instead of null")
+	}
+	if len(parsed.Constraints) != 0 {
+		t.Fatalf("expected no constraints, got %#v", parsed.Constraints)
+	}
+}
+
+func TestParseLeetCodeConstraintsExtractsItemsAndExcludesFollowUp(t *testing.T) {
+	content := `<p>Given an array, return indices.</p>
+<p><strong class="example">Example 1:</strong></p>
+<pre>
+<strong>Input:</strong> nums = [2,7], target = 9
+<strong>Output:</strong> [0,1]
+</pre>
+<p><strong>Constraints:</strong></p>
+<ul><li>2 &lt;= nums.length &lt;= 10^4</li><li>-10^9 &lt;= nums[i] &lt;= 10^9</li></ul>
+<p><strong class="example">Follow up:</strong> Can you do it in O(n)?</p>`
+
+	parsed := parseLeetCodeProblemContent("Two Sum", "https://leetcode.com/problems/two-sum/", content)
+
+	if len(parsed.Constraints) != 2 {
+		t.Fatalf("expected 2 constraints, got %#v", parsed.Constraints)
+	}
+	if parsed.Constraints[0] != "2 <= nums.length <= 10^4" {
+		t.Fatalf("unexpected first constraint: %q", parsed.Constraints[0])
+	}
+	if parsed.Constraints[1] != "-10^9 <= nums[i] <= 10^9" {
+		t.Fatalf("unexpected second constraint: %q", parsed.Constraints[1])
+	}
+	for _, item := range parsed.Constraints {
+		if strings.Contains(item, "Follow") || strings.Contains(item, "O(n)") {
+			t.Fatalf("follow-up leaked into constraints: %#v", parsed.Constraints)
+		}
+	}
+	if strings.Contains(parsed.Statement, "nums.length") || strings.Contains(parsed.Statement, "Constraints") {
+		t.Fatalf("constraints leaked into statement: %q", parsed.Statement)
+	}
+	if len(parsed.Examples) != 1 {
+		t.Fatalf("expected one example unaffected, got %#v", parsed.Examples)
+	}
+}
+
 func TestParseLeetCodeImagesDeduplicatesAndIgnoresDataURLs(t *testing.T) {
 	content := `<p>
 <img src="//assets.leetcode.com/uploads/tree.jpg" alt="Tree">

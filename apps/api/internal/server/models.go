@@ -13,6 +13,7 @@ type Problem struct {
 	SolvedWithoutFollowUps bool       `json:"solved_without_followups"`
 	LastAttemptedAt        *string    `json:"last_attempted_at"`
 	Statement              string     `json:"statement"`
+	StatementIsPlaceholder bool       `json:"statement_is_placeholder"`
 	Examples               []Example  `json:"examples"`
 	Constraints            []string   `json:"constraints"`
 	StarterCode            string     `json:"starter_code"`
@@ -48,13 +49,14 @@ type Example struct {
 }
 
 type OfficialProblemContent struct {
-	Source    string         `json:"source"`
-	SourceURL string         `json:"source_url"`
-	Title     string         `json:"title"`
-	Statement string         `json:"statement"`
-	Examples  []Example      `json:"examples"`
-	Images    []ProblemImage `json:"images"`
-	FetchedAt string         `json:"fetched_at"`
+	Source      string         `json:"source"`
+	SourceURL   string         `json:"source_url"`
+	Title       string         `json:"title"`
+	Statement   string         `json:"statement"`
+	Constraints []string       `json:"constraints"`
+	Examples    []Example      `json:"examples"`
+	Images      []ProblemImage `json:"images"`
+	FetchedAt   string         `json:"fetched_at"`
 }
 
 type ProblemImage struct {
@@ -98,11 +100,60 @@ type Attempt struct {
 }
 
 type ChatMessage struct {
-	ID        string `json:"id"`
-	AttemptID string `json:"attempt_id"`
-	Role      string `json:"role"`
-	Content   string `json:"content"`
-	CreatedAt string `json:"created_at"`
+	ID        string              `json:"id"`
+	AttemptID string              `json:"attempt_id"`
+	Role      string              `json:"role"`
+	Content   string              `json:"content"`
+	Kind      string              `json:"kind"`
+	Payload   *ChatMessagePayload `json:"payload,omitempty"`
+	CreatedAt string              `json:"created_at"`
+}
+
+type ArtifactRequest struct {
+	Kind           string `json:"kind"` // pseudocode | diagram | notes
+	Topic          string `json:"topic"`
+	Instructions   string `json:"instructions"`
+	StarterContent string `json:"starter_content"`
+}
+
+type InterviewerTurn struct {
+	Reply           string           `json:"reply"`
+	Phase           string           `json:"phase"`
+	ArtifactRequest *ArtifactRequest `json:"artifact_request"`
+}
+
+type ArtifactSubmission struct {
+	WhiteboardID     string `json:"whiteboard_id"`
+	Kind             string `json:"kind"`
+	Topic            string `json:"topic"`
+	Content          string `json:"content"`
+	RequestMessageID string `json:"request_message_id,omitempty"`
+}
+
+type ChatMessagePayload struct {
+	ArtifactRequest *ArtifactRequest    `json:"artifact_request,omitempty"`
+	Artifact        *ArtifactSubmission `json:"artifact,omitempty"`
+}
+
+type ChatResponse struct {
+	Message      ChatMessage `json:"message"`
+	CurrentPhase string      `json:"current_phase"`
+}
+
+type ArtifactReplyRequest struct {
+	Kind             string `json:"kind"`
+	Topic            string `json:"topic"`
+	Content          string `json:"content"`
+	Message          string `json:"message"`
+	RequestMessageID string `json:"request_message_id"`
+	EnglishMode      bool   `json:"english_mode"`
+}
+
+type ArtifactReplyResponse struct {
+	Artifact     *WhiteboardArtifact `json:"artifact"`
+	UserMessage  ChatMessage         `json:"user_message"`
+	Message      ChatMessage         `json:"message"`
+	CurrentPhase string              `json:"current_phase"`
 }
 
 type LearningNote struct {
@@ -202,6 +253,7 @@ type CreateAttemptRequest struct {
 	AIProvider    string `json:"ai_provider"`
 	CompanyPreset string `json:"company_preset"`
 	InterviewMode string `json:"interview_mode"`
+	Reset         bool   `json:"reset"`
 }
 
 type ChatRequest struct {
@@ -241,24 +293,6 @@ type WhiteboardRequest struct {
 	Topic   string `json:"topic"`
 	Prompt  string `json:"prompt"`
 	Content string `json:"content"`
-}
-
-type WhiteboardSuggestionRequest struct {
-	Message string `json:"message"`
-}
-
-type WhiteboardSuggestion struct {
-	UseWhiteboard  bool   `json:"use_whiteboard"`
-	Kind           string `json:"kind"`
-	Topic          string `json:"topic"`
-	Prompt         string `json:"prompt"`
-	StarterContent string `json:"starter_content"`
-	Reason         string `json:"reason"`
-}
-
-type WhiteboardSuggestionResponse struct {
-	Suggestion *WhiteboardSuggestion `json:"suggestion"`
-	Whiteboard *WhiteboardArtifact   `json:"whiteboard,omitempty"`
 }
 
 type CodeFileResponse struct {

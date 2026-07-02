@@ -1,670 +1,165 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import {
-  Bot,
-  BrainCircuit,
-  Building2,
-  ClipboardCheck,
-  FileCode2,
-  Loader2,
-  LockKeyhole,
-  Play,
-  RotateCcw,
-  ShieldCheck,
-  Timer,
-} from "lucide-react";
+import { Bot, Loader2 } from "lucide-react";
 import AIChat from "@/components/AIChat";
-import CodeEditor from "@/components/CodeEditor";
 import ProblemStatement from "@/components/ProblemStatement";
 import ReviewPanel from "@/components/ReviewPanel";
 import TestResultPanel from "@/components/TestResultPanel";
-import WhiteboardPanel from "@/components/WhiteboardPanel";
-import { api } from "@/lib/api";
-import type {
-  AIProvider,
-  Attempt,
-  ChatMessage,
-  CodeFileResponse,
-  CompanyPreset,
-  InterviewMode,
-  OfficialProblemContent,
-  Problem,
-  ReviewResponse,
-  RunResult,
-  WhiteboardArtifact,
-  WhiteboardRequest,
-  WhiteboardSuggestion,
-} from "@/lib/types";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ErrorNotice from "@/components/ui/ErrorNotice";
+import { SkeletonBlock } from "@/components/ui/Skeleton";
+import CodePane from "@/components/interview/CodePane";
+import InterviewHeader from "@/components/interview/InterviewHeader";
+import InterviewSettingsDialog, {
+  AI_PROVIDER_OPTIONS,
+  COMPANY_OPTIONS,
+  MODE_OPTIONS,
+  type InterviewSettings,
+} from "@/components/interview/InterviewSettingsDialog";
+import SessionStrip from "@/components/interview/SessionStrip";
+import WorkspaceTabs, {
+  type TestBadgeTone,
+  type WorkspaceTabId,
+} from "@/components/interview/WorkspaceTabs";
+import { useInterviewSession } from "@/hooks/useInterviewSession";
+import { useOfficialContent } from "@/hooks/useOfficialContent";
+import { activePhase } from "@/lib/interviewPhase";
 
-const AI_PROVIDER_OPTIONS: { id: AIProvider; label: string; note: string }[] = [
-  { id: "codex", label: "Codex", note: "Codex CLI subprocess" },
-  { id: "claude", label: "Claude Code", note: "Claude Code CLI subprocess" },
-];
+type PendingChange =
+  | { kind: "new-interview" }
+  | { kind: "settings"; settings: InterviewSettings };
 
-const COMPANY_OPTIONS: { id: CompanyPreset; label: string; note: string }[] = [
-  { id: "google", label: "Google", note: "曖昧さ、証明、深掘り" },
-  { id: "meta", label: "Meta", note: "速度、実装精度、追加問題" },
-  { id: "amazon", label: "Amazon", note: "trade-offと行動面" },
-  { id: "generic", label: "Generic", note: "総合面接" },
-];
-
-const MODE_OPTIONS: { id: InterviewMode; label: string; note: string }[] = [
-  { id: "real", label: "Real", note: "実行なし・補完なし" },
-  { id: "practice", label: "Practice", note: "練習用に実行可" },
-];
-
-const PHASES = ["Clarify", "Plan", "Code", "Dry run", "Follow-up"];
-
-function formatRemaining(seconds: number | null) {
-  if (seconds === null) return "--:--";
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds % 60;
-  return `${minutes}:${rest.toString().padStart(2, "0")}`;
+function settingsSummary(settings: InterviewSettings) {
+  const provider = AI_PROVIDER_OPTIONS.find((o) => o.id === settings.aiProvider)?.label ?? "";
+  const company = COMPANY_OPTIONS.find((o) => o.id === settings.companyPreset)?.label ?? "";
+  const mode = MODE_OPTIONS.find((o) => o.id === settings.interviewMode)?.label ?? "";
+  return `設定: ${provider} · ${company} · ${mode}`;
 }
 
-function phaseLabel(phase?: string) {
-  if (!phase) return "Plan";
-  if (phase.includes("clar")) return "Clarify";
-  if (phase.includes("plan")) return "Plan";
-  if (phase.includes("code") || phase.includes("implement")) return "Code";
-  if (phase.includes("dry") || phase.includes("test")) return "Dry run";
-  if (phase.includes("follow") || phase.includes("review")) return "Follow-up";
-  return "Plan";
+function testBadgeTone(status: string | undefined, passed: boolean | undefined): TestBadgeTone | null {
+  if (status === undefined) return null;
+  if (status === "disabled" || status === "not_configured") return "gray";
+  return passed ? "green" : "red";
 }
 
 export default function ProblemDetailPage() {
   const params = useParams<{ id: string }>();
   const problemId = params.id;
-  const [problem, setProblem] = useState<Problem | null>(null);
-  const [officialContent, setOfficialContent] = useState<OfficialProblemContent | null>(null);
-  const [officialLoading, setOfficialLoading] = useState(false);
-  const [officialError, setOfficialError] = useState("");
+  const session = useInterviewSession(problemId);
+  const official = useOfficialContent(problemId);
+
   const [problemLanguage, setProblemLanguage] = useState<"ja" | "en">("ja");
-  const [attempt, setAttempt] = useState<Attempt | null>(null);
-  const [code, setCode] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [runResult, setRunResult] = useState<RunResult | undefined>();
-  const [review, setReview] = useState<ReviewResponse | undefined>();
-  const [codeFile, setCodeFile] = useState<CodeFileResponse | null>(null);
-  const [whiteboards, setWhiteboards] = useState<WhiteboardArtifact[]>([]);
-  const [activeWhiteboardId, setActiveWhiteboardId] = useState<string | null>(null);
-  const [whiteboardSuggestion, setWhiteboardSuggestion] = useState<WhiteboardSuggestion | null>(null);
-  const [syncStatus, setSyncStatus] = useState("同期準備中");
-  const [aiProvider, setAIProvider] = useState<AIProvider>("codex");
-  const [companyPreset, setCompanyPreset] = useState<CompanyPreset>("google");
-  const [interviewMode, setInterviewMode] = useState<InterviewMode>("real");
-  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
-  const [lastActivityAt, setLastActivityAt] = useState(() => Date.now());
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<"chat" | "run" | "review" | "reset" | "whiteboard" | null>(null);
-  const [chatLoadingLabel, setChatLoadingLabel] = useState("");
-  const [error, setError] = useState("");
-  const codeRef = useRef("");
-  const suppressSaveRef = useRef(false);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastKnownUpdatedAtRef = useRef("");
-  const nudgeInFlightRef = useRef(false);
-  const nudgeSentAtRef = useRef(0);
+  const [activeTab, setActiveTab] = useState<WorkspaceTabId>("code");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
+
+  const { problem, attempt } = session;
 
   useEffect(() => {
-    codeRef.current = code;
-  }, [code]);
+    setProblemLanguage("ja");
+  }, [problem?.id]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const currentSettings: InterviewSettings = {
+    aiProvider: session.aiProvider,
+    companyPreset: session.companyPreset,
+    interviewMode: session.interviewMode,
+  };
 
-    async function load() {
-      setLoading(true);
-      setError("");
-      try {
-        const nextProblem = await api.problem(problemId);
-        if (cancelled) return;
-        setProblem(nextProblem);
-        setOfficialContent(null);
-        setOfficialError("");
-        setProblemLanguage("ja");
-        setOfficialLoading(true);
-        api
-          .officialProblem(problemId)
-          .then((content) => {
-            if (!cancelled) setOfficialContent(content);
-          })
-          .catch((err: Error) => {
-            if (!cancelled) setOfficialError(err.message);
-          })
-          .finally(() => {
-            if (!cancelled) setOfficialLoading(false);
-          });
-        setCode(nextProblem.starter_code);
-        const nextAttempt = await api.createAttempt(
-          problemId,
-          nextProblem.starter_code,
-          aiProvider,
-          companyPreset,
-          interviewMode,
-        );
-        if (cancelled) return;
-        setAIProvider(nextAttempt.ai_provider);
-        setCompanyPreset(nextAttempt.company_preset);
-        setInterviewMode(nextAttempt.interview_mode);
-        setAttempt(nextAttempt);
-        setRunResult(nextAttempt.test_result);
-        setReview(nextAttempt.ai_review);
-        const file = await api.codeFile(nextAttempt.id);
-        if (cancelled) return;
-        applyCodeFile(file, "NeoVim同期が有効です");
-        const nextWhiteboards = await api.whiteboards(nextAttempt.id);
-        if (cancelled) return;
-        setWhiteboards(nextWhiteboards);
-        setActiveWhiteboardId(nextWhiteboards[0]?.id ?? null);
-        setWhiteboardSuggestion(null);
-        setMessages(await api.messages(nextAttempt.id));
-      } catch (err) {
-        if (!cancelled) setError((err as Error).message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+  async function executeChange(change: PendingChange) {
+    setSettingsOpen(false);
+    if (change.kind === "settings") {
+      await session.resetAttempt(change.settings);
+    } else {
+      await session.resetAttempt();
     }
-
-    if (problemId) void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [problemId]);
-
-  const canAct = useMemo(() => Boolean(problem && attempt && !busy), [problem, attempt, busy]);
-  const activePhase = review ? "Follow-up" : runResult ? "Dry run" : phaseLabel(attempt?.current_phase);
-  const currentAIProviderLabel = AI_PROVIDER_OPTIONS.find((option) => option.id === aiProvider)?.label ?? "AI面接官";
-
-  function markActivity() {
-    setLastActivityAt(Date.now());
-    nudgeSentAtRef.current = 0;
+    setActiveTab("code");
   }
 
-  function handleCodeChange(nextCode: string) {
-    setCode(nextCode);
-    markActivity();
-  }
-
-  function applyCodeFile(file: CodeFileResponse, status: string) {
-    setCodeFile(file);
-    lastKnownUpdatedAtRef.current = file.updated_at;
-    if (file.content !== codeRef.current) {
-      suppressSaveRef.current = true;
-      setCode(file.content);
-    }
-    setSyncStatus(status);
-  }
-
-  useEffect(() => {
-    if (!attempt?.created_at || !attempt.time_limit_seconds) return undefined;
-    const tick = () => {
-      const deadline = new Date(attempt.created_at).getTime() + attempt.time_limit_seconds * 1000;
-      setRemainingSeconds(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
-    };
-    tick();
-    const timer = setInterval(tick, 1000);
-    return () => clearInterval(timer);
-  }, [attempt?.created_at, attempt?.time_limit_seconds]);
-
-  useEffect(() => {
-    if (!attempt || attempt.interview_mode !== "real") return undefined;
-    let cancelled = false;
-    const timer = setInterval(() => {
-      const silentForMS = Date.now() - lastActivityAt;
-      if (busy || nudgeInFlightRef.current || nudgeSentAtRef.current || silentForMS < 30000) return;
-      nudgeInFlightRef.current = true;
-      api
-        .nudge(attempt.id, "silence")
-        .then(async () => {
-          if (cancelled) return;
-          nudgeSentAtRef.current = Date.now();
-          setMessages(await api.messages(attempt.id));
-          setSyncStatus("面接官が発話を促しました");
-        })
-        .catch((err: Error) => {
-          if (!cancelled) setError(err.message);
-        })
-        .finally(() => {
-          nudgeInFlightRef.current = false;
-        });
-    }, 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [attempt, busy, lastActivityAt]);
-
-  async function saveCodeNow() {
-    if (!attempt) return codeRef.current;
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    setSyncStatus("保存中");
-    const file = await api.saveCodeFile(attempt.id, codeRef.current);
-    setCodeFile(file);
-    lastKnownUpdatedAtRef.current = file.updated_at;
-    setSyncStatus("保存済み");
-    return codeRef.current;
-  }
-
-  useEffect(() => {
-    if (!attempt || !codeFile) return undefined;
-    if (suppressSaveRef.current) {
-      suppressSaveRef.current = false;
-      return undefined;
-    }
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    setSyncStatus("保存待ち");
-    saveTimerRef.current = setTimeout(() => {
-      saveTimerRef.current = null;
-      api
-        .saveCodeFile(attempt.id, codeRef.current)
-        .then((file) => {
-          setCodeFile(file);
-          lastKnownUpdatedAtRef.current = file.updated_at;
-          setSyncStatus("保存済み");
-        })
-        .catch((err: Error) => setSyncStatus(`同期失敗: ${err.message}`));
-    }, 700);
-    return () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
-    };
-  }, [attempt?.id, code]);
-
-  useEffect(() => {
-    if (!attempt) return undefined;
-    let cancelled = false;
-    const timer = setInterval(() => {
-      if (saveTimerRef.current) return;
-      api
-        .codeFile(attempt.id)
-        .then((file) => {
-          if (cancelled) return;
-          if (
-            lastKnownUpdatedAtRef.current &&
-            file.updated_at !== lastKnownUpdatedAtRef.current &&
-            file.content !== codeRef.current
-          ) {
-            applyCodeFile(file, "NeoVimから反映");
-            return;
-          }
-          setCodeFile(file);
-          lastKnownUpdatedAtRef.current = file.updated_at;
-        })
-        .catch((err: Error) => {
-          if (!cancelled) setSyncStatus(`同期失敗: ${err.message}`);
-        });
-    }, 1500);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [attempt?.id]);
-
-  async function resetAttempt(
-    nextAIProvider: AIProvider = aiProvider,
-    nextCompanyPreset: CompanyPreset = companyPreset,
-    nextInterviewMode: InterviewMode = interviewMode,
-  ) {
-    if (!problem) return;
-    setBusy("reset");
-    setError("");
-    try {
-      const nextAttempt = await api.createAttempt(
-        problem.id,
-        problem.starter_code,
-        nextAIProvider,
-        nextCompanyPreset,
-        nextInterviewMode,
-      );
-      setAIProvider(nextAttempt.ai_provider);
-      setCompanyPreset(nextAttempt.company_preset);
-      setInterviewMode(nextAttempt.interview_mode);
-      setAttempt(nextAttempt);
-      setCode(problem.starter_code);
-      setRunResult(undefined);
-      setReview(undefined);
-      setRemainingSeconds(null);
-      markActivity();
-      const file = await api.codeFile(nextAttempt.id);
-      applyCodeFile(file, "新しいattemptを同期");
-      const nextWhiteboards = await api.whiteboards(nextAttempt.id);
-      setWhiteboards(nextWhiteboards);
-      setActiveWhiteboardId(nextWhiteboards[0]?.id ?? null);
-      setWhiteboardSuggestion(null);
-      setMessages(await api.messages(nextAttempt.id));
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function switchInterview(nextCompanyPreset: CompanyPreset, nextInterviewMode: InterviewMode) {
-    if (nextCompanyPreset === companyPreset && nextInterviewMode === interviewMode) return;
-    await resetAttempt(aiProvider, nextCompanyPreset, nextInterviewMode);
-  }
-
-  async function switchAIProvider(nextAIProvider: AIProvider) {
-    if (nextAIProvider === aiProvider) return;
-    await resetAttempt(nextAIProvider, companyPreset, interviewMode);
-  }
-
-  async function runCode() {
-    if (!attempt) return;
-    if (attempt.no_run) {
-      setRunResult({
-        passed: false,
-        status: "disabled",
-        results: [],
-        error: "Real Interview Modeではローカル実行を使わず、手でdry runしてください。",
-        duration_ms: 0,
-      });
+  function requestChange(change: PendingChange) {
+    if (!session.hasProgress) {
+      void executeChange(change);
       return;
     }
-    markActivity();
-    setBusy("run");
-    setError("");
-    try {
-      const nextCode = await saveCodeNow();
-      const response = await api.run(attempt.id, nextCode);
-      setAttempt(response.attempt);
-      setRunResult(response.result);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(null);
-    }
+    setPendingChange(change);
   }
 
-  async function requestReview() {
-    if (!attempt) return;
-    markActivity();
-    setBusy("review");
-    setError("");
-    try {
-      const nextCode = await saveCodeNow();
-      const response = await api.review(attempt.id, nextCode);
-      setAttempt(response.attempt);
-      setReview(response.review);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(null);
-    }
+  async function handleRun() {
+    await session.runCode();
+    setActiveTab("test");
   }
 
-  async function sendMessage(message: string, englishMode: boolean) {
-    if (!attempt) return;
-    markActivity();
-    const optimistic: ChatMessage = {
-      id: `local-${Date.now()}`,
-      attempt_id: attempt.id,
-      role: "user",
-      content: message,
-      created_at: new Date().toISOString(),
-    };
-    setMessages((current) => current.concat(optimistic));
-    setBusy("chat");
-    setChatLoadingLabel(`${currentAIProviderLabel}へ送信しています`);
-    setError("");
-    try {
-      await saveCodeNow();
-      setChatLoadingLabel(`${currentAIProviderLabel}が考えています`);
-      const reply = await api.sendMessage(attempt.id, message, englishMode);
-      const storedMessages = await api.messages(attempt.id);
-      setMessages(storedMessages.length ? storedMessages : (current) => current.concat(reply));
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(null);
-      setChatLoadingLabel("");
-    }
+  async function handleReview() {
+    await session.requestReview();
+    setActiveTab("review");
   }
 
-  function upsertWhiteboard(item: WhiteboardArtifact) {
-    setWhiteboards((current) => {
-      const next = [item].concat(current.filter((whiteboard) => whiteboard.id !== item.id));
-      return next.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
-    });
-    setActiveWhiteboardId(item.id);
-  }
-
-  async function createWhiteboard(payload: WhiteboardRequest) {
-    if (!attempt) return;
-    markActivity();
-    setBusy("whiteboard");
-    setError("");
-    try {
-      const created = await api.createWhiteboard(attempt.id, payload);
-      upsertWhiteboard(created);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function updateWhiteboard(whiteboardId: string, payload: WhiteboardRequest) {
-    if (!attempt) return;
-    markActivity();
-    setBusy("whiteboard");
-    setError("");
-    try {
-      const updated = await api.updateWhiteboard(attempt.id, whiteboardId, payload);
-      upsertWhiteboard(updated);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function suggestWhiteboard(message: string) {
-    if (!attempt) return;
-    markActivity();
-    setBusy("whiteboard");
-    setError("");
-    try {
-      await saveCodeNow();
-      const response = await api.suggestWhiteboard(attempt.id, message);
-      setWhiteboardSuggestion(response.suggestion);
-      if (response.whiteboard) upsertWhiteboard(response.whiteboard);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  function whiteboardDiscussionMessage(
-    whiteboard: WhiteboardArtifact,
-    candidateMessage: string,
-  ) {
-    const intro =
-      candidateMessage.trim() ||
-      `WhiteBoard「${whiteboard.topic}」を使って議論したいです。面接官として、次に詰めるべき点を質問してください。`;
-    return [
-      intro,
-      "",
-      "[WhiteBoard]",
-      `kind: ${whiteboard.kind}`,
-      `topic: ${whiteboard.topic}`,
-      `prompt: ${whiteboard.prompt}`,
-      "content:",
-      whiteboard.content,
-    ].join("\n");
-  }
-
-  async function discussWhiteboard(
-    whiteboard: WhiteboardArtifact | null,
-    payload: WhiteboardRequest,
-    message: string,
-  ) {
-    if (!attempt) return;
-    markActivity();
-    setBusy("whiteboard");
-    setError("");
-    try {
-      await saveCodeNow();
-      const saved = whiteboard
-        ? await api.updateWhiteboard(attempt.id, whiteboard.id, payload)
-        : await api.createWhiteboard(attempt.id, payload);
-      upsertWhiteboard(saved);
-      await sendMessage(whiteboardDiscussionMessage(saved, message), false);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  if (loading) {
+  if (session.loading) {
     return (
-      <main className="page">
-        <div className="empty">面接画面を準備しています...</div>
+      <main className="pageWide">
+        <div className="pageHeader">
+          <div style={{ width: "100%" }}>
+            <p className="eyebrow">Interview room</p>
+            <SkeletonBlock lines={2} />
+          </div>
+        </div>
+        <SkeletonBlock lines={3} />
+        <div className="interviewShell" style={{ marginTop: 14 }}>
+          <section className="pane">
+            <div className="paneBody">
+              <SkeletonBlock lines={6} />
+            </div>
+          </section>
+          <section className="pane">
+            <div className="paneBody">
+              <SkeletonBlock lines={6} />
+            </div>
+          </section>
+        </div>
       </main>
     );
   }
 
-  if (error && !problem) {
+  if (session.error && !problem) {
     return (
-      <main className="page">
-        <div className="error">{error}</div>
+      <main className="pageWide">
+        <ErrorNotice message={`面接画面を読み込めませんでした: ${session.error}`} />
       </main>
     );
   }
 
   if (!problem) return null;
 
+  const phase = activePhase({
+    currentPhase: attempt?.current_phase,
+    hasRun: Boolean(session.runResult),
+    hasReview: Boolean(session.review),
+  });
+
+  const confirmCopy =
+    pendingChange?.kind === "settings"
+      ? { title: "設定を変更しますか？", confirmLabel: "変更して再開" }
+      : { title: "新しい面接を始めますか？", confirmLabel: "新しく始める" };
+
   return (
     <main className="pageWide">
-      <div className="pageHeader">
-        <div>
-          <p className="eyebrow">Interview room</p>
-          <h1>{problem.title}</h1>
-          <p className="muted">
-            まず方針を面接官に説明し、納得されたらNeoVimかブラウザで実装します。
-          </p>
-        </div>
-        <div className="buttonRow">
-          {problem.source_url ? (
-            <a className="secondaryButton" href={problem.source_url} target="_blank" rel="noreferrer">
-              公式問題
-            </a>
-          ) : null}
-          <button className="secondaryButton" type="button" onClick={() => resetAttempt()} disabled={!canAct}>
-            <RotateCcw size={18} />
-            新しいattempt
-          </button>
-        </div>
-      </div>
+      <InterviewHeader
+        problem={problem}
+        remainingSeconds={session.remainingSeconds}
+        settingsSummary={settingsSummary(currentSettings)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onNewInterview={() => requestChange({ kind: "new-interview" })}
+        disabled={!session.canAct}
+      />
 
-      {error ? <div className="error" style={{ marginBottom: 12 }}>{error}</div> : null}
-
-      <section className="interviewControl" aria-label="real interview controls">
-        <div className="controlCluster">
-          <div className="controlHeading">
-            <BrainCircuit size={18} />
-            <div>
-              <strong>AI provider</strong>
-              <span>{AI_PROVIDER_OPTIONS.find((option) => option.id === aiProvider)?.note}</span>
-            </div>
-          </div>
-          <div className="segmented segmentedTwo">
-            {AI_PROVIDER_OPTIONS.map((option) => (
-              <button
-                className={`segmentButton ${aiProvider === option.id ? "segmentButtonActive" : ""}`}
-                type="button"
-                key={option.id}
-                disabled={!canAct}
-                title={option.note}
-                onClick={() => switchAIProvider(option.id)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+      {session.error ? (
+        <div style={{ marginBottom: 12 }}>
+          <ErrorNotice message={session.error} />
         </div>
+      ) : null}
 
-        <div className="controlCluster">
-          <div className="controlHeading">
-            <Building2 size={18} />
-            <div>
-              <strong>Company preset</strong>
-              <span>面接官の詰め方を切り替えます</span>
-            </div>
-          </div>
-          <div className="segmented">
-            {COMPANY_OPTIONS.map((option) => (
-              <button
-                className={`segmentButton ${companyPreset === option.id ? "segmentButtonActive" : ""}`}
-                type="button"
-                key={option.id}
-                disabled={!canAct}
-                title={option.note}
-                onClick={() => switchInterview(option.id, interviewMode)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="controlCluster">
-          <div className="controlHeading">
-            <ShieldCheck size={18} />
-            <div>
-              <strong>Interview mode</strong>
-              <span>{MODE_OPTIONS.find((option) => option.id === interviewMode)?.note}</span>
-            </div>
-          </div>
-          <div className="segmented segmentedTwo">
-            {MODE_OPTIONS.map((option) => (
-              <button
-                className={`segmentButton ${interviewMode === option.id ? "segmentButtonActive" : ""}`}
-                type="button"
-                key={option.id}
-                disabled={!canAct}
-                title={option.note}
-                onClick={() => switchInterview(companyPreset, option.id)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="controlCluster controlClusterWide">
-          <div className="modeFacts">
-            <span className="timerBadge">
-              <Timer size={16} />
-              {formatRemaining(remainingSeconds)}
-            </span>
-            {attempt?.no_run ? <span className="status statusTodo">No local run</span> : <span className="status">Run allowed</span>}
-            {attempt?.no_autocomplete ? (
-              <span className="status statusTodo">Autocomplete off</span>
-            ) : (
-              <span className="status">Autocomplete on</span>
-            )}
-            {attempt?.requires_plan ? <span className="tag">Plan gate</span> : null}
-          </div>
-          <div className="phaseRail" aria-label="interview phase">
-            {PHASES.map((phase) => (
-              <span className={`phaseStep ${phase === activePhase ? "phaseStepActive" : ""}`} key={phase}>
-                {phase}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
+      <SessionStrip attempt={attempt} activePhase={phase} syncState={session.syncState} />
 
       <div className="interviewShell">
         <section className="pane">
@@ -674,11 +169,12 @@ export default function ProblemDetailPage() {
           <div className="paneBody">
             <ProblemStatement
               problem={problem}
-              officialContent={officialContent}
-              officialLoading={officialLoading}
-              officialError={officialError}
+              officialContent={official.content}
+              officialLoading={official.loading}
+              officialError={official.error}
               language={problemLanguage}
               onLanguageChange={setProblemLanguage}
+              onRetryOfficial={official.retry}
             />
           </div>
 
@@ -686,91 +182,77 @@ export default function ProblemDetailPage() {
             <h2>
               <Bot size={18} /> AI面接官
             </h2>
-            {busy === "chat" ? <Loader2 className="spin" size={17} /> : null}
+            {session.busy === "chat" ? <Loader2 className="spin" size={17} /> : null}
           </div>
           <div className="paneBody">
             <AIChat
-              messages={messages}
-              loading={busy === "chat"}
-              loadingLabel={chatLoadingLabel}
+              messages={session.messages}
+              loading={session.busy === "chat"}
+              loadingLabel={session.chatLoadingLabel}
               disabled={!attempt}
-              onSend={sendMessage}
+              onSend={session.sendMessage}
+              onSubmitArtifact={session.submitArtifact}
+              artifactBusy={session.busy === "artifact"}
+              onActivity={session.markActivity}
             />
           </div>
         </section>
 
         <section className="pane editorPane">
-          <div className="paneHeader">
-            <h2>Python</h2>
-            <div className="buttonRow">
-              <button
-                className="secondaryButton"
-                type="button"
-                onClick={runCode}
-                disabled={!canAct || Boolean(attempt?.no_run)}
-                title={attempt?.no_run ? "Real Interview Modeではローカル実行を使いません" : "ローカルテストを実行"}
-              >
-                {attempt?.no_run ? (
-                  <LockKeyhole size={17} />
-                ) : busy === "run" ? (
-                  <Loader2 className="spin" size={17} />
-                ) : (
-                  <Play size={17} />
-                )}
-                {attempt?.no_run ? "No run" : "テスト"}
-              </button>
-              <button className="button" type="button" onClick={requestReview} disabled={!canAct}>
-                {busy === "review" ? (
-                  <Loader2 className="spin" size={17} />
-                ) : (
-                  <ClipboardCheck size={17} />
-                )}
-                Submit
-              </button>
-            </div>
-          </div>
-          <div className="syncStrip">
-            <div>
-              <span className="syncLabel">
-                <FileCode2 size={16} /> NeoVim sync
-              </span>
-              <code className="syncPath">{codeFile?.path ? `nvim ${codeFile.path}` : "workspace を準備中"}</code>
-            </div>
-            <div className="syncMeta">
-              {attempt?.no_autocomplete ? <span className="tag">補完なし</span> : null}
-              <span className="syncState">{syncStatus}</span>
-            </div>
-          </div>
-          <CodeEditor value={code} onChange={handleCodeChange} noAutocomplete={Boolean(attempt?.no_autocomplete)} />
-
-          <WhiteboardPanel
-            whiteboards={whiteboards}
-            activeId={activeWhiteboardId}
-            loading={busy === "whiteboard"}
-            disabled={!attempt}
-            suggestion={whiteboardSuggestion}
-            onSelect={setActiveWhiteboardId}
-            onCreate={createWhiteboard}
-            onUpdate={updateWhiteboard}
-            onSuggest={suggestWhiteboard}
-            onDiscuss={discussWhiteboard}
+          <WorkspaceTabs
+            active={activeTab}
+            onChange={setActiveTab}
+            testBadge={testBadgeTone(session.runResult?.status, session.runResult?.passed)}
+            reviewBadge={Boolean(session.review)}
+            codePanel={
+              <CodePane
+                code={session.code}
+                onCodeChange={session.onCodeChange}
+                codeFile={session.codeFile}
+                noAutocomplete={Boolean(attempt?.no_autocomplete)}
+                noRun={Boolean(attempt?.no_run)}
+                running={session.busy === "run"}
+                reviewing={session.busy === "review"}
+                canAct={session.canAct}
+                onRun={handleRun}
+                onReview={handleReview}
+              />
+            }
+            testPanel={
+              <div className="paneBody">
+                <TestResultPanel result={session.runResult} />
+              </div>
+            }
+            reviewPanel={
+              <div className="paneBody">
+                <ReviewPanel review={session.review} />
+              </div>
+            }
           />
-
-          <div className="paneHeader">
-            <h2>テスト結果</h2>
-          </div>
-          <div className="paneBody">
-            <TestResultPanel result={runResult} />
-          </div>
-
-          <div className="paneHeader">
-            <h2>AIレビュー</h2>
-          </div>
-          <div className="paneBody">
-            <ReviewPanel review={review} />
-          </div>
         </section>
       </div>
+
+      <InterviewSettingsDialog
+        open={settingsOpen}
+        aiProvider={session.aiProvider}
+        companyPreset={session.companyPreset}
+        interviewMode={session.interviewMode}
+        disabled={!session.canAct}
+        onRequestChange={(settings) => requestChange({ kind: "settings", settings })}
+        onClose={() => setSettingsOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={pendingChange !== null}
+        title={confirmCopy.title}
+        description="現在のattemptのコードとチャットは新しいattemptに引き継がれません。"
+        confirmLabel={confirmCopy.confirmLabel}
+        onConfirm={() => {
+          if (pendingChange) void executeChange(pendingChange);
+          setPendingChange(null);
+        }}
+        onCancel={() => setPendingChange(null)}
+      />
     </main>
   );
 }

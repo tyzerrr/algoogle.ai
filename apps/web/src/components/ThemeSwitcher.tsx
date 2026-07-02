@@ -48,10 +48,10 @@ export default function ThemeSwitcher() {
             key={option.id}
             type="button"
             title={`${option.label} mode`}
-            aria-label={`${option.label} mode`}
             onClick={() => selectTheme(option.id)}
           >
-            <Icon size={16} />
+            <Icon size={16} aria-hidden="true" />
+            <span className="visuallyHidden">{option.label} mode</span>
           </button>
         );
       })}

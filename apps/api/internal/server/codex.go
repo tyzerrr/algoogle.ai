@@ -158,9 +158,13 @@ func copyCodexHomeFile(sourceHome, targetHome, name string) error {
 	return os.WriteFile(targetPath, data, 0600)
 }
 
-func (c *CodexClient) Chat(ctx context.Context, problem Problem, attempt Attempt, messages []ChatMessage, userMessage string, englishMode bool, memory ProblemMemory) (string, error) {
-	prompt := buildChatPrompt(problem, attempt, messages, userMessage, englishMode, memory)
-	return c.Generate(ctx, prompt, nil)
+func (c *CodexClient) Chat(ctx context.Context, problem Problem, attempt Attempt, messages []ChatMessage, userMessage string, englishMode bool, memory ProblemMemory) (InterviewerTurn, error) {
+	schema := interviewerTurnJSONSchema()
+	raw, err := c.Generate(ctx, buildChatPrompt(problem, attempt, messages, userMessage, englishMode, memory), &schema)
+	if err != nil {
+		return InterviewerTurn{}, err
+	}
+	return parseInterviewerTurn(raw, attempt.CurrentPhase), nil
 }
 
 func (c *CodexClient) Review(ctx context.Context, problem Problem, attempt Attempt, code string, memory ProblemMemory) (ReviewResponse, error) {
@@ -174,20 +178,6 @@ func (c *CodexClient) Review(ctx context.Context, problem Problem, attempt Attem
 		return fallbackReview("AIレビューのJSONを解析できませんでした: " + raw), err
 	}
 	return review, nil
-}
-
-func (c *CodexClient) SuggestWhiteboard(ctx context.Context, problem Problem, attempt Attempt, messages []ChatMessage, memory ProblemMemory, userMessage string) (WhiteboardSuggestion, error) {
-	schema := whiteboardSuggestionJSONSchema()
-	raw, err := c.Generate(ctx, buildWhiteboardSuggestionPrompt(problem, attempt, messages, memory, userMessage), &schema)
-	if err != nil {
-		return fallbackWhiteboardSuggestion(err.Error()), err
-	}
-	var suggestion WhiteboardSuggestion
-	if err := json.Unmarshal([]byte(extractJSONObject(raw)), &suggestion); err != nil {
-		return fallbackWhiteboardSuggestion("WhiteBoard提案のJSONを解析できませんでした: " + raw), err
-	}
-	normalizeWhiteboardSuggestion(&suggestion)
-	return suggestion, nil
 }
 
 func fallbackReview(summary string) ReviewResponse {

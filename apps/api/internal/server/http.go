@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,7 +16,7 @@ type App struct {
 	cfg           Config
 	store         *Store
 	runner        *CodeRunner
-	ai            *AIService
+	ai            InterviewAI
 	codeFiles     *CodeFileManager
 	sourceFetcher ProblemSourceProvider
 	router        http.Handler
@@ -71,9 +72,7 @@ func (a *App) routes() http.Handler {
 	r.Get("/attempts/{attemptID}/chat", a.listChat)
 	r.Post("/attempts/{attemptID}/nudge", a.nudge)
 	r.Get("/attempts/{attemptID}/whiteboards", a.listWhiteboards)
-	r.Post("/attempts/{attemptID}/whiteboards", a.createWhiteboard)
-	r.Put("/attempts/{attemptID}/whiteboards/{whiteboardID}", a.updateWhiteboard)
-	r.Post("/attempts/{attemptID}/whiteboard-suggestion", a.suggestWhiteboard)
+	r.Post("/attempts/{attemptID}/artifact-reply", a.artifactReply)
 	r.Get("/attempts/{attemptID}/code-file", a.getCodeFile)
 	r.Put("/attempts/{attemptID}/code-file", a.updateCodeFile)
 	r.Post("/attempts/{attemptID}/run", a.runCode)
@@ -103,7 +102,14 @@ func (a *App) getOfficialProblem(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, err)
 		return
 	}
+	if cached, cacheErr := a.store.GetOfficialContent(problem.ID); cacheErr == nil {
+		respond(w, cached, nil)
+		return
+	}
 	content, err := a.sourceFetcher.Fetch(r.Context(), *problem)
+	if err == nil && content != nil {
+		_ = a.store.SaveOfficialContent(problem.ID, *content)
+	}
 	respond(w, content, err)
 }
 
@@ -119,6 +125,11 @@ func (a *App) createAttempt(w http.ResponseWriter, r *http.Request) {
 	}
 	attempt, err := a.store.CreateAttempt(req)
 	if err == nil {
+		if req.Reset {
+			// Reset semantics: overwrite the shared per-problem file with the
+			// starter code so a fresh attempt discards prior on-disk edits.
+			_, _ = a.codeFiles.Write(*attempt, attempt.Code)
+		}
 		a.codeFiles.Decorate(attempt)
 		memory, _ := a.store.ProblemMemory(attempt.ProblemID)
 		_, _ = a.store.EnsureInitialMessage(attempt.ID, initialInterviewMessage(*attempt, memory))
@@ -167,17 +178,49 @@ func (a *App) chat(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, err)
 		return
 	}
-	messages, _ := a.store.ListMessages(attemptID)
-	memory, _ := a.store.ProblemMemory(attempt.ProblemID)
-	reply, err := a.ai.Chat(r.Context(), *problem, *attempt, messages, req.Message, req.EnglishMode, memory)
+	message, phase, err := a.completeInterviewerTurn(r.Context(), attempt, problem, req.Message, req.EnglishMode)
 	if err != nil {
-		reply = fmt.Sprintf("%s CLIを使ったAI面接官を起動できませんでした。CLI path、ログイン状態、Docker利用時のcredentialマウントを確認してください。\n\n詳細: %s", aiProviderLabel(attempt.AIProvider), err.Error())
+		respond(w, nil, err)
+		return
 	}
-	message, err := a.store.AddMessage(attemptID, "assistant", reply)
-	if err == nil {
-		_ = a.store.RecordFollowUps(attemptID, "chat", extractQuestions(reply))
+	writeJSON(w, http.StatusOK, ChatResponse{Message: *message, CurrentPhase: phase})
+}
+
+// completeInterviewerTurn runs one interviewer turn: it asks the AI, advances the
+// phase, persists the assistant message (as an artifact request when one is
+// present), and records follow-ups. A CLI failure degrades to a plain text turn
+// so the interview never stalls.
+func (a *App) completeInterviewerTurn(ctx context.Context, attempt *Attempt, problem *Problem, userMessage string, englishMode bool) (*ChatMessage, string, error) {
+	messages, _ := a.store.ListMessages(attempt.ID)
+	memory, _ := a.store.ProblemMemory(attempt.ProblemID)
+	turn, err := a.ai.Chat(ctx, *problem, *attempt, messages, userMessage, englishMode, memory)
+	if err != nil {
+		reply := fmt.Sprintf("%s CLIを使ったAI面接官を起動できませんでした。CLI path、ログイン状態、Docker利用時のcredentialマウントを確認してください。\n\n詳細: %s", aiProviderLabel(attempt.AIProvider), err.Error())
+		turn = InterviewerTurn{Reply: reply, Phase: attempt.CurrentPhase, ArtifactRequest: nil}
 	}
-	respond(w, message, err)
+
+	phase := advancePhase(attempt.CurrentPhase, turn.Phase)
+	if phase != attempt.CurrentPhase {
+		if updated, phaseErr := a.store.UpdateAttemptPhase(attempt.ID, phase); phaseErr == nil {
+			attempt = updated
+		}
+	}
+
+	kind := "text"
+	var payload *ChatMessagePayload
+	if turn.ArtifactRequest != nil {
+		kind = "artifact_request"
+		payload = &ChatMessagePayload{ArtifactRequest: turn.ArtifactRequest}
+	}
+	message, err := a.store.AddStructuredMessage(attempt.ID, "assistant", turn.Reply, kind, payload)
+	if err != nil {
+		return nil, "", err
+	}
+	_ = a.store.RecordFollowUps(attempt.ID, "chat", extractQuestions(turn.Reply))
+	if turn.ArtifactRequest != nil {
+		_ = a.store.RecordFollowUps(attempt.ID, "artifact_request", []string{turn.ArtifactRequest.Instructions})
+	}
+	return message, phase, nil
 }
 
 func (a *App) listChat(w http.ResponseWriter, r *http.Request) {
@@ -207,33 +250,17 @@ func (a *App) listWhiteboards(w http.ResponseWriter, r *http.Request) {
 	respond(w, items, err)
 }
 
-func (a *App) createWhiteboard(w http.ResponseWriter, r *http.Request) {
+func (a *App) artifactReply(w http.ResponseWriter, r *http.Request) {
 	attemptID := chi.URLParam(r, "attemptID")
-	var req WhiteboardRequest
+	var req ArtifactReplyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	item, err := a.store.CreateWhiteboard(attemptID, req)
-	respond(w, item, err)
-}
-
-func (a *App) updateWhiteboard(w http.ResponseWriter, r *http.Request) {
-	attemptID := chi.URLParam(r, "attemptID")
-	whiteboardID := chi.URLParam(r, "whiteboardID")
-	var req WhiteboardRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
+	if strings.TrimSpace(req.Content) == "" {
+		writeError(w, http.StatusBadRequest, "content is required")
 		return
 	}
-	item, err := a.store.UpdateWhiteboard(attemptID, whiteboardID, req)
-	respond(w, item, err)
-}
-
-func (a *App) suggestWhiteboard(w http.ResponseWriter, r *http.Request) {
-	attemptID := chi.URLParam(r, "attemptID")
-	var req WhiteboardSuggestionRequest
-	_ = json.NewDecoder(r.Body).Decode(&req)
 	attempt, err := a.store.GetAttempt(attemptID)
 	if err != nil {
 		respond(w, nil, err)
@@ -247,28 +274,64 @@ func (a *App) suggestWhiteboard(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, err)
 		return
 	}
-	messages, _ := a.store.ListMessages(attemptID)
-	memory, _ := a.store.ProblemMemory(attempt.ProblemID)
-	suggestion, suggestErr := a.ai.SuggestWhiteboard(r.Context(), *problem, *attempt, messages, memory, req.Message)
-	if suggestErr != nil {
-		suggestion = fallbackWhiteboardSuggestion(suggestErr.Error())
-	}
-	normalizeWhiteboardSuggestion(&suggestion)
-	var whiteboard *WhiteboardArtifact
-	if suggestion.UseWhiteboard {
-		whiteboard, err = a.store.CreateWhiteboard(attemptID, WhiteboardRequest{
-			Kind:    suggestion.Kind,
-			Topic:   suggestion.Topic,
-			Prompt:  suggestion.Prompt,
-			Content: suggestion.StarterContent,
-		})
-		if err != nil {
-			respond(w, nil, err)
-			return
+
+	// Resolve the originating request (tolerant): a missing or invalid id simply
+	// means no linkage, and we fall back to the body's kind/topic.
+	kind := req.Kind
+	topic := req.Topic
+	prompt := ""
+	if strings.TrimSpace(req.RequestMessageID) != "" {
+		if requestMessage, msgErr := a.store.GetMessage(attemptID, req.RequestMessageID); msgErr == nil && requestMessage.Payload != nil && requestMessage.Payload.ArtifactRequest != nil {
+			ar := requestMessage.Payload.ArtifactRequest
+			prompt = ar.Instructions
+			if strings.TrimSpace(kind) == "" {
+				kind = ar.Kind
+			}
+			if strings.TrimSpace(topic) == "" {
+				topic = ar.Topic
+			}
 		}
-		_ = a.store.RecordFollowUps(attemptID, "whiteboard", []string{suggestion.Prompt})
 	}
-	respond(w, WhiteboardSuggestionResponse{Suggestion: &suggestion, Whiteboard: whiteboard}, nil)
+	kind = normalizeWhiteboardKind(kind)
+	topic = trimOrDefault(topic, whiteboardKindLabel(kind))
+
+	whiteboard, err := a.store.CreateWhiteboard(attemptID, WhiteboardRequest{
+		Kind:    kind,
+		Topic:   topic,
+		Prompt:  prompt,
+		Content: req.Content,
+	})
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+
+	submission := ArtifactSubmission{
+		WhiteboardID:     whiteboard.ID,
+		Kind:             kind,
+		Topic:            topic,
+		Content:          req.Content,
+		RequestMessageID: strings.TrimSpace(req.RequestMessageID),
+	}
+	userContent := trimOrDefault(req.Message, "ホワイトボードで回答します。")
+	userMessage, err := a.store.AddStructuredMessage(attemptID, "user", userContent, "artifact", &ChatMessagePayload{Artifact: &submission})
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+
+	aiUserMessage := formatArtifactSubmissionForPrompt(userContent, submission)
+	message, phase, err := a.completeInterviewerTurn(r.Context(), attempt, problem, aiUserMessage, req.EnglishMode)
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, ArtifactReplyResponse{
+		Artifact:     whiteboard,
+		UserMessage:  *userMessage,
+		Message:      *message,
+		CurrentPhase: phase,
+	})
 }
 
 func (a *App) getCodeFile(w http.ResponseWriter, r *http.Request) {
@@ -448,7 +511,7 @@ func initialInterviewMessage(attempt Attempt, memory ProblemMemory) string {
 	if attempt.InterviewMode == "practice" {
 		mode = "練習モードです。ただし本番同様、実装前の説明は省略しません。\n\n"
 	}
-	return prefix + mode + "まず実装に入る前に、どのように解くつもりかを説明してください。全探索の方針、より良い解法の見込み、使うデータ構造、気になるエッジケースを1つずつ短く述べてください。コードはまだ書かなくて大丈夫です。"
+	return prefix + mode + "まず問題の確認から始めます。問題文を自分の言葉で言い直し、入力の制約、返すべき値、気になるエッジケースを確認してください。曖昧な点があれば私に質問してください。コードはまだ書かなくて大丈夫です。"
 }
 
 func silenceNudgeMessage(attempt Attempt, reason string) string {
@@ -461,7 +524,7 @@ func silenceNudgeMessage(attempt Attempt, reason string) string {
 	case "amazon":
 		return "少し止まっています。Amazonの面接では判断過程も評価対象です。今の制約理解と、顧客影響のある失敗ケースを1つ説明してください。"
 	case "google":
-		return "少し止まっています。Googleの面接では曖昧さへの向き合い方も見ます。今の不変条件と、証明できていない点を1つ言語化してください。"
+		return "少し止まっていますね。考えていることをそのまま声に出してもらえますか？今の方針と、次に確認しようとしていることを教えてください。"
 	default:
 		return "少し止まっています。今何を考えているか、次に検証することを短く説明してください。"
 	}

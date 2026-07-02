@@ -3,18 +3,22 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import ErrorNotice from "@/components/ui/ErrorNotice";
+import { SkeletonBlock } from "@/components/ui/Skeleton";
 import type { ReviewDashboard } from "@/lib/types";
 
 export default function ReviewPage() {
   const [dashboard, setDashboard] = useState<ReviewDashboard | null>(null);
   const [error, setError] = useState("");
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
+    setError("");
     api
       .reviewDashboard()
       .then(setDashboard)
       .catch((err: Error) => setError(err.message));
-  }, []);
+  }, [reloadTick]);
 
   return (
     <main className="page">
@@ -26,8 +30,14 @@ export default function ReviewPage() {
         </div>
       </div>
 
-      {error ? <div className="error">{error}</div> : null}
-      {!dashboard && !error ? <div className="empty">復習データを読み込んでいます...</div> : null}
+      {error ? (
+        <ErrorNotice
+          message="復習データを読み込めませんでした"
+          onRetry={() => setReloadTick((tick) => tick + 1)}
+          retryLabel="再取得"
+        />
+      ) : null}
+      {!dashboard && !error ? <SkeletonBlock lines={6} /> : null}
 
       {dashboard ? (
         <div className="reviewBlock">

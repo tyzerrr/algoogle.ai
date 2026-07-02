@@ -13,6 +13,8 @@ services:
       CLAUDE_CLI_PATH: claude
       CLAUDE_WORKDIR: /app/apps/api
       CLAUDE_CLI_TIMEOUT_SECONDS: "240"
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       PYTHON_BIN: python3
       CODE_WORKSPACE_DIR: /workspace
       CODE_WORKSPACE_PUBLIC_DIR: ./workspace

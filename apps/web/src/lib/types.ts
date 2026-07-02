@@ -10,13 +10,8 @@ export type CompanyPreset = "google" | "meta" | "amazon" | "generic";
 export type InterviewMode = "real" | "practice";
 export type AIProvider = "codex" | "claude";
 export type ThemeMode = "light" | "dark" | "netflix";
-export type WhiteboardKind =
-  | "pseudocode"
-  | "mermaid_sequence"
-  | "data_structure"
-  | "invariants"
-  | "state_transition"
-  | "complexity_table";
+export type ArtifactKind = "pseudocode" | "diagram" | "notes";
+export type ChatMessageKind = "text" | "artifact_request" | "artifact";
 
 export type ProblemListItem = {
   id: string;
@@ -49,6 +44,7 @@ export type TestCase = {
 
 export type Problem = ProblemListItem & {
   statement: string;
+  statement_is_placeholder: boolean;
   examples: Example[];
   constraints: string[];
   starter_code: string;
@@ -65,6 +61,7 @@ export type OfficialProblemContent = {
   source_url: string;
   title: string;
   statement: string;
+  constraints: string[];
   examples: Example[];
   images: ProblemImage[];
   fetched_at: string;
@@ -161,12 +158,55 @@ export type Attempt = {
   created_at: string;
 };
 
+export type ArtifactRequest = {
+  kind: ArtifactKind;
+  topic: string;
+  instructions: string;
+  starter_content: string;
+};
+
+export type ArtifactSubmission = {
+  whiteboard_id: string;
+  kind: ArtifactKind;
+  topic: string;
+  content: string;
+  request_message_id?: string;
+};
+
+export type ChatMessagePayload = {
+  artifact_request?: ArtifactRequest;
+  artifact?: ArtifactSubmission;
+};
+
 export type ChatMessage = {
   id: string;
   attempt_id: string;
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  kind: ChatMessageKind;
+  payload?: ChatMessagePayload;
+};
+
+export type ChatResponse = {
+  message: ChatMessage;
+  current_phase: string;
+};
+
+export type ArtifactReplyPayload = {
+  kind: ArtifactKind;
+  topic: string;
+  content: string;
+  message: string;
+  request_message_id?: string;
+  english_mode?: boolean;
+};
+
+export type ArtifactReplyResponse = {
+  artifact: WhiteboardArtifact;
+  user_message: ChatMessage;
+  message: ChatMessage;
+  current_phase: string;
 };
 
 export type DailyResponse = {
@@ -241,32 +281,11 @@ export type WhiteboardArtifact = {
   id: string;
   attempt_id: string;
   problem_id: string;
-  kind: WhiteboardKind;
+  kind: ArtifactKind;
   topic: string;
   prompt: string;
   content: string;
   version: number;
   created_at: string;
   updated_at: string;
-};
-
-export type WhiteboardRequest = {
-  kind: WhiteboardKind;
-  topic: string;
-  prompt: string;
-  content: string;
-};
-
-export type WhiteboardSuggestion = {
-  use_whiteboard: boolean;
-  kind: WhiteboardKind | "";
-  topic: string;
-  prompt: string;
-  starter_content: string;
-  reason: string;
-};
-
-export type WhiteboardSuggestionResponse = {
-  suggestion: WhiteboardSuggestion;
-  whiteboard?: WhiteboardArtifact;
 };

@@ -1,7 +1,10 @@
 import type {
   AIProvider,
+  ArtifactReplyPayload,
+  ArtifactReplyResponse,
   Attempt,
   ChatMessage,
+  ChatResponse,
   CodeFileResponse,
   CompanyPreset,
   DailyResponse,
@@ -12,9 +15,6 @@ import type {
   ReviewDashboard,
   ReviewResponse,
   RunResult,
-  WhiteboardArtifact,
-  WhiteboardRequest,
-  WhiteboardSuggestionResponse,
 } from "./types";
 
 const API_BASE_URL =
@@ -54,6 +54,7 @@ export const api = {
     aiProvider: AIProvider = "codex",
     companyPreset: CompanyPreset = "google",
     interviewMode: InterviewMode = "real",
+    reset = false,
   ) =>
     apiFetch<Attempt>("/attempts", {
       method: "POST",
@@ -64,6 +65,7 @@ export const api = {
         ai_provider: aiProvider,
         company_preset: companyPreset,
         interview_mode: interviewMode,
+        reset,
       }),
     }),
   messages: (attemptId: string) => apiFetch<ChatMessage[]>(`/attempts/${attemptId}/chat`),
@@ -73,27 +75,15 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ code }),
     }),
-  whiteboards: (attemptId: string) =>
-    apiFetch<WhiteboardArtifact[]>(`/attempts/${attemptId}/whiteboards`),
-  createWhiteboard: (attemptId: string, payload: WhiteboardRequest) =>
-    apiFetch<WhiteboardArtifact>(`/attempts/${attemptId}/whiteboards`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  updateWhiteboard: (attemptId: string, whiteboardId: string, payload: WhiteboardRequest) =>
-    apiFetch<WhiteboardArtifact>(`/attempts/${attemptId}/whiteboards/${whiteboardId}`, {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    }),
-  suggestWhiteboard: (attemptId: string, message?: string) =>
-    apiFetch<WhiteboardSuggestionResponse>(`/attempts/${attemptId}/whiteboard-suggestion`, {
-      method: "POST",
-      body: JSON.stringify({ message: message ?? "" }),
-    }),
   sendMessage: (attemptId: string, message: string, englishMode: boolean) =>
-    apiFetch<ChatMessage>(`/attempts/${attemptId}/chat`, {
+    apiFetch<ChatResponse>(`/attempts/${attemptId}/chat`, {
       method: "POST",
       body: JSON.stringify({ message, english_mode: englishMode }),
+    }),
+  artifactReply: (attemptId: string, payload: ArtifactReplyPayload) =>
+    apiFetch<ArtifactReplyResponse>(`/attempts/${attemptId}/artifact-reply`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
   nudge: (attemptId: string, reason: string) =>
     apiFetch<ChatMessage>(`/attempts/${attemptId}/nudge`, {
